@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import { createGameHost, roomListBody, ROOMS_PATH } from './src/engine/net/host'
 import { bedwarsRooms } from './src/games/bedwars/server'
+import { createMcProxy } from './src/server/mcproxy'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
@@ -11,12 +12,20 @@ function gameServer(): Plugin {
     name: 'game-server',
     configureServer(server) {
       const game = createGameHost(bedwarsRooms)
-      server.httpServer?.on('upgrade', (req, socket, head) => game.handleUpgrade(req, socket, head))
+      const mcProxy = createMcProxy()
+      server.httpServer?.on('upgrade', (req, socket, head) => {
+        if (mcProxy.handleUpgrade(req, socket, head)) return
+        game.handleUpgrade(req, socket, head)
+      })
+      server.middlewares.use((req, res, next) => {
+        if (mcProxy.handleRequest(req, res)) return
+        next()
+      })
       server.middlewares.use(ROOMS_PATH, (_req, res) => {
         res.setHeader('content-type', 'application/json')
         res.end(roomListBody(game.list(), game.online()))
       })
-      server.httpServer?.on('close', () => game.close())
+      server.httpServer?.on('close', () => { game.close(); mcProxy.close() })
     },
   }
 }

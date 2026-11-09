@@ -276,19 +276,28 @@ shop.
 
 The menu's **Real Minecraft (1.8.9 beta)** opens `src/mcclient/`: our own
 browser client, not a launcher. It speaks the Java Edition 1.8.9 wire protocol
-directly, logs in with an offline username, reads both normal and bulk chunk
-packets, renders the terrain with flat block colours, keeps the connection
-alive, supports fly controls and chat, and shows server messages. The browser
-reaches TCP servers through the public net-browserify proxy at
-`pproxy.rom1504.fr`, so no backend or port forwarding is needed.
+directly, logs in with an offline username, reads normal and bulk chunk packets,
+renders flat-coloured blocky terrain, and keeps the connection alive. It walks
+with collision and gravity, jumps, sprints, sneaks, toggles creative-style
+flight with **F**, breaks and places blocks with a nine-slot hotbar, shows other
+players and mobs as coloured bodies, and displays chat, hearts and hunger.
 
-It is deliberately **not** Eaglercraft parity yet. It is a terrain viewer with
-free-fly movement: there is no collision/physics, block breaking or placing,
-inventory, entities, sounds or Mojang assets. Only **offline-mode**
-(`online-mode=false`) servers work; online-mode sends an encryption request and
-the client refuses it. The protocol implementation and block palette live in
-`src/mcclient/protocol.ts` and `src/mcclient/world.ts`; the live server test is
-`tests/mcclient-live.test.ts`.
+**The proxy is ours.** `bun run start`, `bun run share`, `bun run dev:node` and
+the desktop app expose `/api/mc-proxy` (`src/server/mcproxy.ts`), a small
+net-browserify-compatible WebSocket-to-TCP bridge. The browser detects it first;
+static/Sites builds, which have no Node process, fall back to the public
+`pproxy.rom1504.fr`. That means own-server players never go through a third
+party, and no port forwarding is needed. The bridge opens TCP destinations for
+the browser, so only expose it on a deployment you trust; tokens are single-use
+and tunnels are capped.
+
+It is still **not full Eaglercraft parity**: there are no Mojang assets, skins or
+name tags, animation models, inventory containers, crafting, resource packs,
+server-list UI or online-mode authentication. Only **offline-mode**
+(`online-mode=false`) servers work; an online-mode server sends an encryption
+request and the client refuses it. The codec and block palette live in
+`src/mcclient/protocol.ts` and `src/mcclient/world.ts`; the live 1.8.9 test is
+`tests/mcclient-live.test.ts`, and the proxy test is `tests/mcproxy.test.ts`.
 
 ### One command: website + Java server + free public address
 

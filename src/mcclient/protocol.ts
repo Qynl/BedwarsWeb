@@ -17,16 +17,38 @@ export const C2S = {
   loginStart: 0x00,
   keepAlive: 0x00,
   chat: 0x01,
+  position: 0x04,
+  look: 0x05,
   positionLook: 0x06,
+  blockDig: 0x07,
+  blockPlace: 0x08,
+  heldItem: 0x09,
+  animation: 0x0a,
 } as const
 
 export const S2C = {
   keepAlive: 0x00,
   joinGame: 0x01,
   chat: 0x02,
+  health: 0x06,
+  respawn: 0x07,
   position: 0x08,
+  heldItem: 0x09,
+  spawnPlayer: 0x0c,
+  spawnObject: 0x0e,
+  spawnMob: 0x0f,
+  entityMove: 0x15,
+  entityLook: 0x16,
+  entityMoveLook: 0x17,
+  entityTeleport: 0x18,
+  entityHead: 0x19,
+  entityDestroy: 0x13,
   chunk: 0x21,
+  multiBlockChange: 0x22,
   blockChange: 0x23,
+  chunkBulk: 0x26,
+  playerInfo: 0x38,
+  abilities: 0x39,
   kick: 0x40,
 } as const
 
@@ -183,6 +205,13 @@ export class Writer {
     return this
   }
 
+  i64(n: bigint): this {
+    const b = new Uint8Array(8)
+    new DataView(b.buffer).setBigInt64(0, n, false)
+    this.parts.push(...b)
+    return this
+  }
+
   bool(n: boolean): this {
     return this.u8(n ? 1 : 0)
   }
@@ -317,6 +346,31 @@ export function positionLook(x: number, y: number, z: number, yaw: number, pitch
   return frame(C2S.positionLook, new Writer().f64(x).f64(y).f64(z).f32(yaw).f32(pitch).bool(onGround).finish(), threshold)
 }
 
+/** 1.8 packs a block position into one long: x:26, y:12, z:26. */
+export function packPosition(x: number, y: number, z: number): bigint {
+  return BigInt.asIntN(64, (BigInt(x & 0x3ffffff) << 38n) | (BigInt(y & 0xfff) << 26n) | BigInt(z & 0x3ffffff))
+}
+
+/** status: 0 start, 1 cancel, 2 finish. */
+export function blockDig(status: number, x: number, y: number, z: number, face: number, threshold = -1): Uint8Array {
+  return frame(C2S.blockDig, new Writer().varint(status).i64(packPosition(x, y, z)).i8(face).finish(), threshold)
+}
+
+/** `itemId` is the held block/item; an empty hand is -1. */
+export function blockPlace(x: number, y: number, z: number, face: number, itemId: number, threshold = -1): Uint8Array {
+  const item = itemId > 0 ? new Writer().i16(itemId).i8(1).i16(0).i8(0) : new Writer().i16(-1)
+  return frame(C2S.blockPlace, new Writer()
+    .i64(packPosition(x, y, z))
+    .i8(face)
+    .bytes(item.finish())
+    .i8(8).i8(8).i8(8)
+    .finish(), threshold)
+}
+
+export function heldItemSlot(slot: number, threshold = -1): Uint8Array {
+  return frame(C2S.heldItem, new Writer().i16(slot).finish(), threshold)
+}
+
 export interface ChunkColumn {
   x: number
   z: number
@@ -417,4 +471,122 @@ export function parseBlockChange(data: Uint8Array): { x: number; y: number; z: n
   const z = rawZ >= 0x2000000 ? rawZ - 0x4000000 : rawZ
   const state = r.varint()
   return { x, y, z, id: state >> 4 }
+}
+
+export interface SpawnedEntity {
+  id: number
+  kind: 'player' | 'mob' | 'object'
+  /** Mob type id, object type id, or 0 for players. */
+  type: number
+  x: number
+  y: number
+  z: number
+  yaw: number
+  pitch: number
+  uuid?: string
+}
+
+function fixed(value: number): number {
+  return value / 32
+}
+
+function uuidHex(r: Reader): string {
+  return [...r.take(16)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** 0x0C named_entity_spawn (other players). */
+export function parseSpawnPlayer(data: Uint8Array): SpawnedEntity {
+  const r = new Reader(data)
+  const id = r.varint()
+  const uuid = uuidHex(r)
+  return {
+    id, kind: 'player', type: 0, uuid,
+    x: fixed(r.i32()), y: fixed(r.i32()), z: fixed(r.i32()),
+    yaw: r.i8() * Math.PI / 128, pitch: r.i8() * Math.PI / 128,
+  }
+}
+
+/** 0x0F spawn_entity_living (mobs). */
+export function parseSpawnMob(data: Uint8Array): SpawnedEntity {
+  const r = new Reader(data)
+  const id = r.varint()
+  const type = r.u8()
+  return {
+    id, kind: 'mob', type,
+    x: fixed(r.i32()), y: fixed(r.i32()), z: fixed(r.i32()),
+    yaw: r.i8() * Math.PI / 128, pitch: r.i8() * Math.PI / 128,
+  }
+}
+
+/** 0x0E spawn_entity (items, arrows, boats, paintings, ...). */
+export function parseSpawnObject(data: Uint8Array): SpawnedEntity {
+  const r = new Reader(data)
+  const id = r.varint()
+  const type = r.i8()
+  return {
+    id, kind: 'object', type,
+    x: fixed(r.i32()), y: fixed(r.i32()), z: fixed(r.i32()),
+    pitch: r.i8() * Math.PI / 128, yaw: r.i8() * Math.PI / 128,
+  }
+}
+
+export function parseEntityMove(data: Uint8Array): { id: number; dx: number; dy: number; dz: number } {
+  const r = new Reader(data)
+  return { id: r.varint(), dx: r.i8() / 32, dy: r.i8() / 32, dz: r.i8() / 32 }
+}
+
+export function parseEntityLook(data: Uint8Array): { id: number; yaw: number; pitch: number } {
+  const r = new Reader(data)
+  return { id: r.varint(), yaw: r.i8() * Math.PI / 128, pitch: r.i8() * Math.PI / 128 }
+}
+
+export function parseEntityMoveLook(data: Uint8Array): { id: number; dx: number; dy: number; dz: number; yaw: number; pitch: number } {
+  const r = new Reader(data)
+  return {
+    id: r.varint(), dx: r.i8() / 32, dy: r.i8() / 32, dz: r.i8() / 32,
+    yaw: r.i8() * Math.PI / 128, pitch: r.i8() * Math.PI / 128,
+  }
+}
+
+export function parseEntityTeleport(data: Uint8Array): { id: number; x: number; y: number; z: number; yaw: number; pitch: number } {
+  const r = new Reader(data)
+  return {
+    id: r.varint(),
+    x: fixed(r.i32()), y: fixed(r.i32()), z: fixed(r.i32()),
+    yaw: r.i8() * Math.PI / 128, pitch: r.i8() * Math.PI / 128,
+  }
+}
+
+export function parseEntityHead(data: Uint8Array): { id: number; headYaw: number } {
+  const r = new Reader(data)
+  return { id: r.varint(), headYaw: r.i8() * Math.PI / 128 }
+}
+
+export function parseEntityDestroy(data: Uint8Array): number[] {
+  const r = new Reader(data)
+  const count = r.varint()
+  const ids: number[] = []
+  for (let i = 0; i < count; i++) ids.push(r.varint())
+  return ids
+}
+
+export function parseHealth(data: Uint8Array): { health: number; food: number; saturation: number } {
+  const r = new Reader(data)
+  return { health: r.f32(), food: r.varint(), saturation: r.f32() }
+}
+
+/** 0x22 multi_block_change: records are (x<<4|z, y, block state). */
+export function parseMultiBlockChange(data: Uint8Array): { x: number; y: number; z: number; id: number }[] {
+  const r = new Reader(data)
+  const chunkX = r.i32()
+  const chunkZ = r.i32()
+  const count = r.varint()
+  const out: { x: number; y: number; z: number; id: number }[] = []
+  for (let i = 0; i < count; i++) {
+    const horizontal = r.u8()
+    const y = r.u8()
+    const state = r.varint()
+    out.push({ x: chunkX * 16 + (horizontal >> 4), y, z: chunkZ * 16 + (horizontal & 15), id: state >> 4 })
+  }
+  return out
 }

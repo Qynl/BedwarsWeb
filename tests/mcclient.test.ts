@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { concat, frame, handshake, loginStart, parseBlockChange, parseChunk, parseChunkBulk, parsePosition, readPacket, Reader, Writer } from '../src/mcclient/protocol'
+import { blockDig, blockPlace, concat, frame, handshake, heldItemSlot, loginStart, packPosition, parseBlockChange, parseChunk, parseChunkBulk, parseEntityDestroy, parseEntityTeleport, parseHealth, parseMultiBlockChange, parsePosition, parseSpawnMob, parseSpawnPlayer, readPacket, Reader, Writer } from '../src/mcclient/protocol'
 import { ChunkStore } from '../src/mcclient/world'
 
 describe('Minecraft 1.8 client protocol', () => {
@@ -89,6 +89,53 @@ describe('Minecraft 1.8 client protocol', () => {
     store.set({ x: 0, z: 0, blocks: update, sections: 0b1, full: false })
     expect(store.block(0, 0, 0)).toBe(3)
     expect(store.block(0, 16, 0)).toBe(2)
+  })
+
+  test('writes block dig, place and hotbar packets for 1.8', () => {
+    const dig = new Reader(blockDig(2, 10, 64, -3, 1).subarray(1))
+    expect(dig.varint()).toBe(0x07)
+    expect(dig.varint()).toBe(2)
+    expect(dig.i64()).toBe(packPosition(10, 64, -3))
+    expect(dig.i8()).toBe(1)
+    const place = new Reader(blockPlace(1, 64, 2, 3, 4).subarray(1))
+    expect(place.varint()).toBe(0x08)
+    expect(place.i64()).toBe(packPosition(1, 64, 2))
+    expect(place.i8()).toBe(3)
+    expect(place.i16()).toBe(4)
+    expect(place.i8()).toBe(1)
+    expect(place.i16()).toBe(0)
+    expect(place.i8()).toBe(0)
+    expect([place.i8(), place.i8(), place.i8()]).toEqual([8, 8, 8])
+    const slot = new Reader(heldItemSlot(5).subarray(1))
+    expect(slot.varint()).toBe(0x09)
+    expect(slot.i16()).toBe(5)
+  })
+
+  test('parses health, spawn, teleport, destroy and multi-block packets', () => {
+    const health = parseHealth(concat(new Writer().f32(17.5).varint(18).f32(4.5).finish()))
+    expect(health).toEqual({ health: 17.5, food: 18, saturation: 4.5 })
+
+    const spawn = parseSpawnPlayer(new Writer()
+      .varint(7).bytes(new Uint8Array(16).fill(0xab))
+      .i32(32).i32(64 * 32).i32(-32)
+      .i8(0).i8(0).i16(0).finish())
+    expect(spawn).toMatchObject({ id: 7, kind: 'player', x: 1, y: 64, z: -1 })
+    expect(spawn.uuid).toHaveLength(32)
+
+    const mob = parseSpawnMob(new Writer().varint(9).u8(50).i32(0).i32(65 * 32).i32(0).i8(0).i8(0).i8(0).finish())
+    expect(mob).toMatchObject({ id: 9, kind: 'mob', type: 50, y: 65 })
+
+    const teleport = parseEntityTeleport(new Writer().varint(9).i32(16).i32(64 * 32).i32(0).i8(0).i8(0).bool(true).finish())
+    expect(teleport).toMatchObject({ id: 9, x: 0.5, y: 64, z: 0 })
+    expect(parseEntityDestroy(new Writer().varint(2).varint(7).varint(9).finish())).toEqual([7, 9])
+
+    const multi = parseMultiBlockChange(new Writer().i32(1).i32(-1).varint(2)
+      .u8(0x43).u8(70).varint(1 << 4)
+      .u8(0x10).u8(65).varint(2 << 4).finish())
+    expect(multi).toEqual([
+      { x: 20, y: 70, z: -13, id: 1 },
+      { x: 17, y: 65, z: -16, id: 2 },
+    ])
   })
 
   test('decodes a 1.8 block_change packed position', () => {

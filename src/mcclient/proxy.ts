@@ -5,6 +5,29 @@
  */
 
 export const DEFAULT_PROXY = 'https://pproxy.rom1504.fr/api/vm/net'
+/** Our Node server (and the Vite dev server) exposes the net-browserify API here. */
+const ORIGIN_PROXY = typeof window !== 'undefined' ? `${window.location.origin}/api/mc-proxy` : null
+let discovered: Promise<string> | null = null
+
+/** Prefer the proxy hosted by this site; static/Sites builds fall back to the public one. */
+export async function pickProxy(): Promise<string> {
+  if (!ORIGIN_PROXY) return DEFAULT_PROXY
+  discovered ??= (async () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 1500)
+    try {
+      const response = await fetch(ORIGIN_PROXY, { method: 'GET', signal: controller.signal, cache: 'no-store' })
+      if (!response.ok) return DEFAULT_PROXY
+      const body = (await response.json()) as { ok?: boolean }
+      return body.ok ? ORIGIN_PROXY : DEFAULT_PROXY
+    } catch {
+      return DEFAULT_PROXY
+    } finally {
+      clearTimeout(timer)
+    }
+  })()
+  return discovered
+}
 
 export interface Tunnel {
   /** Send raw TCP bytes. */
@@ -19,8 +42,8 @@ interface Ticket {
   error?: string
 }
 
-export async function openTunnel(host: string, port: number, proxy = DEFAULT_PROXY): Promise<Tunnel> {
-  const base = proxy.replace(/\/+$/, '')
+export async function openTunnel(host: string, port: number, proxy?: string): Promise<Tunnel> {
+  const base = (proxy ?? await pickProxy()).replace(/\/+$/, '')
   let response: Response
   try {
     response = await fetch(`${base}/connect`, {

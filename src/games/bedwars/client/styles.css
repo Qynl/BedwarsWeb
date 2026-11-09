@@ -466,11 +466,3 @@ a.btn { display: inline-grid; place-items: center; text-decoration: none; }
 @media (max-width: 640px) {
   .hud.hub .sidebar { width: 180px; }
 }
-
-/* Real Minecraft launcher ---------------------------------------------------- */
-.real-mc .lead { margin: 0 0 14px; font-size: 15px; line-height: 1.45; }
-.real-mc .field select { height: 38px; padding: 0 8px; border: 2px solid #a0a0a0; outline: 2px solid #000; background: #000; color: #fff; font: 16px var(--font); }
-.real-mc .real-error { min-height: 20px; margin: 0 0 6px; color: #ffb4a2; font-size: 14px; }
-.real-mc .menu-pair { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.real-mc .menu-pair .btn { flex: 1 1 auto; text-align: center; text-decoration: none; }
-.real-mc code { padding: 0 3px; background: #3a3a3a; color: #fff; }

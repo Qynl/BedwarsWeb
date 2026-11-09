@@ -1,5 +1,6 @@
 import './style.css'
 import { RealClient } from './client'
+import { blockColour, HOTBAR_BLOCKS } from './world'
 
 export function openRealClient(): () => void {
   const root = document.createElement('div')
@@ -13,7 +14,7 @@ export function openRealClient(): () => void {
           <h1>Real Minecraft <span>1.8.9 · beta</span></h1>
           <button class="mc-close" id="mc-close" title="Back to SKYSHARD">✕</button>
         </div>
-        <p class="mc-lead">Our own browser client for real Java Edition servers. It logs in with an offline name, reads the server's chunks and draws them with flat block colours. No Minecraft files or textures are used.</p>
+        <p class="mc-lead">Our own browser client for real Java Edition servers. It logs in with an offline name, reads the server's terrain, lets you walk, jump and fly, and break or place blocks. No Minecraft files or textures are used.</p>
         <form id="mc-form">
           <label class="mc-field"><span>Server address</span>
             <input id="mc-host" placeholder="play.example.net or play.example.net:25565" autocomplete="off" spellcheck="false" required>
@@ -27,13 +28,19 @@ export function openRealClient(): () => void {
             <button class="mc-btn" type="button" id="mc-back">Back</button>
           </div>
         </form>
-        <p class="mc-note">This is a terrain viewer with fly controls (<b>WASD</b>, <b>Space</b>/<b>Ctrl</b>, mouse to look, <b>T</b> to chat). Movement, block edits, inventory and entities are the next milestones — it is not full Eaglercraft parity yet.</p>
+        <p class="mc-note">Walk with <b>WASD</b>, jump with <b>Space</b>, sprint with <b>Shift</b>, sneak with <b>Ctrl</b>. Press <b>F</b> to fly (Space/Shift up and down) and <b>1–9</b> or the wheel to choose a block. Left-click breaks, right-click places, <b>T</b> chats. Other players, mobs, block updates and hearts are rendered; containers, crafting, skins and online-mode login are not.</p>
       </div>
     </section>
     <div class="mc-hud" id="mc-hud" hidden>
-      <div class="mc-hud-left"><b>Real Minecraft</b><span id="mc-world">waiting for chunks…</span><span id="mc-coords"></span></div>
+      <div class="mc-crosshair" aria-hidden="true"></div>
+      <div class="mc-hud-left">
+        <b>Real Minecraft</b><span id="mc-world">waiting for chunks…</span><span id="mc-coords"></span>
+        <span class="mc-stats"><span id="mc-health">HP 20</span><span id="mc-food">FOOD 20</span></span>
+      </div>
       <div class="mc-hud-right"><button class="mc-btn small" id="mc-leave">Leave</button></div>
-      <div class="mc-hint" id="mc-hint">Click the world to look around · T to chat · Esc releases the mouse</div>
+      <div class="mc-held" id="mc-held">Grass block</div>
+      <div class="mc-hotbar" id="mc-hotbar"></div>
+      <div class="mc-hint" id="mc-hint">Click to look · WASD move · Space jump · Shift sprint · F fly · L/R click break/place · T chat · Esc releases</div>
       <div class="mc-chat" id="mc-chat" hidden></div>
       <input class="mc-chat-input" id="mc-chat-input" maxlength="100" placeholder="Say something…" hidden>
     </div>`
@@ -50,6 +57,25 @@ export function openRealClient(): () => void {
   const hint = document.getElementById('mc-hint')!
   const chatBox = document.getElementById('mc-chat')!
   const chatInput = document.getElementById('mc-chat-input') as HTMLInputElement
+  const hotbar = document.getElementById('mc-hotbar')!
+  const held = document.getElementById('mc-held')!
+  const health = document.getElementById('mc-health')!
+  const food = document.getElementById('mc-food')!
+
+  for (const [index, item] of HOTBAR_BLOCKS.entries()) {
+    const slot = document.createElement('div')
+    slot.className = 'mc-slot'
+    slot.title = `${index + 1} · ${item.name}`
+    const [r, g, b] = blockColour(item.id)
+    const swatch = document.createElement('span')
+    swatch.className = 'mc-swatch'
+    swatch.style.background = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`
+    const key = document.createElement('b')
+    key.textContent = String(index + 1)
+    slot.append(swatch, key)
+    hotbar.append(slot)
+  }
+  hotbar.children[0]?.classList.add('active')
 
   let client: RealClient
   try {
@@ -77,6 +103,14 @@ export function openRealClient(): () => void {
       },
       moved(x, y, z) {
         coords.textContent = `${x.toFixed(1)} ${y.toFixed(1)} ${z.toFixed(1)}`
+      },
+      selected(index, item) {
+        for (const [i, slot] of [...hotbar.children].entries()) slot.classList.toggle('active', i === index)
+        held.textContent = item.name
+      },
+      stats(currentHealth, currentFood) {
+        health.textContent = `HP ${Math.max(0, Math.ceil(currentHealth))}`
+        food.textContent = `FOOD ${Math.max(0, Math.ceil(currentFood))}`
       },
     })
   } catch (error) {

@@ -29,11 +29,13 @@ SOFTWARE.
 
 The browser client in `src/mcclient/` uses
 [fflate](https://github.com/101arrowz/fflate) (MIT) for the zlib compression
-that Minecraft's packet framing requires. It reaches Java servers through the
-public [net-browserify](https://github.com/PrismarineJS/net-browserify) proxy at
-`pproxy.rom1504.fr`; that service is not bundled with this repository. The
-client includes no Mojang code or assets: block colours are drawn from a small
-table in `src/mcclient/world.ts`.
+that Minecraft's packet framing requires. Our Node server hosts its own
+net-browserify-compatible WebSocket-to-TCP bridge (`src/server/mcproxy.ts`); on
+static/Sites deployments the client falls back to the public
+[net-browserify](https://github.com/PrismarineJS/net-browserify) proxy at
+`pproxy.rom1504.fr`, which is not bundled with this repository. The client
+includes no Mojang code or assets: block colours are drawn from a small table in
+`src/mcclient/world.ts` and all sounds are synthesised in the browser.
 
 The optional Java Edition gateway (`src/games/bedwars/minecraft.ts`) uses
 Minecraft protocol libraries from the PrismarineJS project:

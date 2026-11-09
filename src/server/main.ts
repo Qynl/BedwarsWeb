@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createGameHost, GAME_PATH, roomListBody, ROOMS_PATH } from '../engine/net/host'
 import type { RoomFactory, RoomListing } from '../engine/net/room'
 import { bedwarsRooms } from '../games/bedwars/server'
+import { createMcProxy } from './mcproxy'
 
 /** The default rooms, exported so scripts can speak their wire format (scripts/smoke-server.mjs). */
 export { bedwarsRooms }
@@ -135,12 +136,18 @@ export async function startServer(options: ServerOptions = {}): Promise<{ server
   const workers = Math.max(1, options.workers ?? 1)
   let listRooms: RoomLister = async () => ({ rooms: [], online: 0 })
   const handle = staticHandler(staticDir, () => listRooms())
-  const server = createServer((req, res) => void handle(req, res))
+  const mcProxy = createMcProxy()
+  const server = createServer((req, res) => {
+    if (mcProxy.handleRequest(req, res)) return
+    void handle(req, res)
+  })
+  server.on('close', () => mcProxy.close())
 
   if (workers === 1) {
     const game = createGameHost(rooms)
     listRooms = async () => ({ rooms: game.list(), online: game.online() })
     server.on('upgrade', (req, socket, head) => {
+      if (mcProxy.handleUpgrade(req, socket, head)) return
       if (!game.handleUpgrade(req, socket, head)) socket.destroy()
     })
     server.on('close', () => game.close())
@@ -197,6 +204,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{ server
         }
       })
     server.on('upgrade', (req, socket: Socket, head) => {
+      if (mcProxy.handleUpgrade(req, socket, head)) return
       if (!req.url?.startsWith(GAME_PATH)) return socket.destroy()
       const key = rooms.key(new URL(req.url, 'http://localhost').searchParams)
       const worker = pool[hash(key) % pool.length]

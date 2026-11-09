@@ -35,9 +35,44 @@ const COLOURS: Record<number, [number, number, number]> = {
   173: [0.12, 0.12, 0.12], 174: [0.66, 0.84, 0.94], 175: [0.30, 0.58, 0.22],
 }
 
+/** Blocks with see-through or partial geometry; their neighbours keep their faces visible. */
+const TRANSPARENT = new Set<number>([
+  8, 9, 10, 11, 18, 20, 26, 30, 44, 51, 53, 54, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+  75, 76, 77, 78, 79, 83, 85, 90, 93, 94, 95, 96, 101, 102, 104, 105, 106, 107, 108, 109,
+  111, 113, 114, 115, 117, 118, 119, 120, 123, 124, 125, 126, 127, 128, 130, 131, 132, 134,
+  135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 154,
+  156, 157, 160, 161, 162, 163, 164, 165, 167, 171, 175, 176, 177, 178, 179, 180, 181, 182,
+  183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200,
+  201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+  219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236,
+  237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255,
+])
+
+/** Blocks a walking player can pass through. Partial blocks (slabs, fences) are left solid. */
+const NON_SOLID = new Set<number>([
+  0, 6, 8, 9, 10, 11, 27, 28, 30, 31, 32, 37, 38, 39, 40, 50, 51, 55, 59, 63, 65, 66, 68, 69,
+  70, 75, 76, 78, 83, 90, 93, 94, 104, 105, 106, 111, 115, 117, 118, 119, 127, 132, 140, 141,
+  142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 154, 157, 171, 175, 176, 177, 178, 179, 180,
+  181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199,
+  200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+  219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237,
+  238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255,
+])
+
 export function isOpaqueBlock(id: number): boolean {
-  return id !== 0
+  return id !== 0 && !TRANSPARENT.has(id)
 }
+
+export function isSolidBlock(id: number): boolean {
+  return id !== 0 && !NON_SOLID.has(id)
+}
+
+export interface HotbarItem { id: number; name: string }
+export const HOTBAR_BLOCKS: readonly HotbarItem[] = [
+  { id: 2, name: 'Grass block' }, { id: 1, name: 'Stone' }, { id: 3, name: 'Dirt' },
+  { id: 4, name: 'Cobblestone' }, { id: 5, name: 'Oak planks' }, { id: 12, name: 'Sand' },
+  { id: 20, name: 'Glass' }, { id: 17, name: 'Oak log' }, { id: 18, name: 'Oak leaves' },
+]
 
 export function blockColour(id: number): [number, number, number] {
   return COLOURS[id] ?? [0.55, 0.40, 0.45]
@@ -77,6 +112,13 @@ export class ChunkStore {
     this.chunks.clear()
   }
 
+  delete(x: number, z: number): ChunkColumn | undefined {
+    const key = ChunkStore.key(x, z)
+    const chunk = this.chunks.get(key)
+    this.chunks.delete(key)
+    return chunk
+  }
+
   all(): ChunkColumn[] {
     return [...this.chunks.values()]
   }
@@ -106,4 +148,75 @@ export class ChunkStore {
     const lz = z & 15
     return chunk.blocks[(y << 8) | (lz << 4) | lx]
   }
+}
+
+
+export interface TargetBlock {
+  x: number
+  y: number
+  z: number
+  /** Face normal pointing back toward the player. */
+  face: [number, number, number]
+}
+
+/** Amanatides–Woo voxel raycast from the eye, up to `max` blocks away. */
+export function raycastBlock(store: ChunkStore, origin: [number, number, number], direction: [number, number, number], max = 6): TargetBlock | null {
+  let x = Math.floor(origin[0])
+  let y = Math.floor(origin[1])
+  let z = Math.floor(origin[2])
+  const step: [number, number, number] = [
+    direction[0] > 0 ? 1 : direction[0] < 0 ? -1 : 0,
+    direction[1] > 0 ? 1 : direction[1] < 0 ? -1 : 0,
+    direction[2] > 0 ? 1 : direction[2] < 0 ? -1 : 0,
+  ]
+  const delta: [number, number, number] = [
+    direction[0] === 0 ? Infinity : Math.abs(1 / direction[0]),
+    direction[1] === 0 ? Infinity : Math.abs(1 / direction[1]),
+    direction[2] === 0 ? Infinity : Math.abs(1 / direction[2]),
+  ]
+  const next: [number, number, number] = [
+    direction[0] === 0 ? Infinity : ((direction[0] > 0 ? x + 1 : x) - origin[0]) / direction[0],
+    direction[1] === 0 ? Infinity : ((direction[1] > 0 ? y + 1 : y) - origin[1]) / direction[1],
+    direction[2] === 0 ? Infinity : ((direction[2] > 0 ? z + 1 : z) - origin[2]) / direction[2],
+  ]
+  let face: [number, number, number] = [0, 0, 0]
+  for (let guard = 0; guard < 128; guard++) {
+    if (isSolidBlock(store.block(x, y, z))) return { x, y, z, face }
+    if (next[0] < next[1] && next[0] < next[2]) {
+      if (next[0] > max) return null
+      x += step[0]
+      face = [-step[0], 0, 0]
+      next[0] += delta[0]
+    } else if (next[1] < next[2]) {
+      if (next[1] > max) return null
+      y += step[1]
+      face = [0, -step[1], 0]
+      next[1] += delta[1]
+    } else {
+      if (next[2] > max) return null
+      z += step[2]
+      face = [0, 0, -step[2]]
+      next[2] += delta[2]
+    }
+  }
+  return null
+}
+
+export const PLAYER_HALF_WIDTH = 0.3
+export const PLAYER_HEIGHT = 1.8
+
+/** True when a full 0.6×1.8 player box at feet position (x,y,z) intersects a solid block. */
+export function playerCollides(store: ChunkStore, x: number, y: number, z: number): boolean {
+  const eps = 1e-4
+  const minX = Math.floor(x - PLAYER_HALF_WIDTH + eps)
+  const maxX = Math.floor(x + PLAYER_HALF_WIDTH - eps)
+  const minY = Math.floor(y + eps)
+  const maxY = Math.floor(y + PLAYER_HEIGHT - eps)
+  const minZ = Math.floor(z - PLAYER_HALF_WIDTH + eps)
+  const maxZ = Math.floor(z + PLAYER_HALF_WIDTH - eps)
+  for (let by = minY; by <= maxY; by++)
+    for (let bz = minZ; bz <= maxZ; bz++)
+      for (let bx = minX; bx <= maxX; bx++)
+        if (isSolidBlock(store.block(bx, by, bz))) return true
+  return false
 }
