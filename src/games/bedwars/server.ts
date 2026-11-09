@@ -45,13 +45,9 @@ export function createBedwarsRoom(p: RoomParams, offline = false): Room {
         : arenaRules({
             timeline,
             ...(p.map ? { maps: [p.map, ...ARENA_IDS.filter((id) => id !== p.map)] } : {}),
-            ...(offline
-              ? { minPlayers: 1, countdownTicks: 5 * 20 }
-              : p.auto
-                ? { minPlayers: 1, countdownTicks: 10 * TPS }
-                : p.fast
-                  ? { countdownTicks: 60 }
-                  : {}),
+            // Server rooms are matches, not lobbies: the first person starts the countdown
+            // and bots fill the other teams. Nobody has to click Start.
+            ...(offline ? { minPlayers: 1, countdownTicks: 5 * 20 } : { minPlayers: 1, countdownTicks: 10 * TPS }),
           })
   const room = new Room({ rules, seed: Math.floor(Math.random() * 1e6) })
   room.params = p

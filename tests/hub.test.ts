@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { blockDef } from '../src/games/bedwars/blocks'
 import { ARENA_IDS, freshRoomName, joinTarget, pickArenaRoom, type RoomInfo } from '../src/games/bedwars/client/rooms'
-import { createHub, HUB_PARKOUR } from '../src/games/bedwars/maps/hub'
-import { createBedwarsRoom, roomParams } from '../src/games/bedwars/server'
+import { createHub, HUB_GATE, HUB_PARKOUR, inHubGate } from '../src/games/bedwars/maps/hub'
+import { bedwarsRooms, createBedwarsRoom, roomParams } from '../src/games/bedwars/server'
 import { TestClient, ticks } from './room-helpers'
 
 const params = (q: string) => new URLSearchParams(q)
@@ -54,6 +54,18 @@ describe('the server hub', () => {
     }
   })
 
+  test('the bed-wars gate stands on the north path, with a sign', () => {
+    const map = createHub()
+    expect(blockDef(map.world.get(Math.floor(HUB_GATE.x), HUB_GATE.minY - 1, Math.floor(HUB_GATE.z))).solid).toBe(true)
+    expect(map.world.get(Math.floor(HUB_GATE.x), HUB_GATE.minY, Math.floor(HUB_GATE.z))).toBe(0)
+    expect(map.labels.some((l) => l.text === 'BEDWARS')).toBe(true)
+    expect(map.labels.some((l) => /gate/.test(l.text))).toBe(true)
+    expect(inHubGate(HUB_GATE.x, HUB_GATE.minY, HUB_GATE.z)).toBe(true)
+    expect(inHubGate(HUB_GATE.x + 7, HUB_GATE.minY, HUB_GATE.z)).toBe(false)
+    const spawn = map.lobby!.spawn
+    expect(inHubGate(spawn[0], spawn[1], spawn[2])).toBe(false)
+  })
+
   test('the parkour pads are solid, reachable steps', () => {
     const map = createHub()
     const pads = [HUB_PARKOUR.start, ...HUB_PARKOUR.checkpoints, HUB_PARKOUR.finish]
@@ -90,6 +102,25 @@ describe('matchmaking from the hub', () => {
     expect(freshRoomName('frostpeak', [room({ room: 'frostpeak-1' })])).toBe('frostpeak-2')
   })
 
+  test('a player can pick a team from chat before the start', () => {
+    const arena = createBedwarsRoom(roomParams(params('world=arena&room=teams')))
+    const a = new TestClient(arena, 'Ash')
+    a.send({ t: 'chat', text: '/team blue' })
+    expect(a.p.team).toBe('blue')
+    a.send({ t: 'chat', text: '/team purple' })
+    expect(a.events('system').some((t) => t.startsWith('Teams: Red, Blue, Green, Yellow'))).toBe(true)
+    expect(a.p.team).toBe('blue')
+  })
+
+  test('an ordinary room starts itself too: nobody has to press Start', () => {
+    const arena = createBedwarsRoom(roomParams(params('world=arena&room=direct')))
+    new TestClient(arena, 'Ash')
+    ticks(arena, 11 * 20)
+    expect(arena.phase).toBe('playing')
+    expect([...arena.players.values()].filter((p) => p.brain).length).toBe(3)
+    expect(arena.summary()).toMatchObject({ auto: false, players: 1, bots: 3 })
+  })
+
   test('an auto room starts itself with bots when one person arrives', () => {
     const arena = createBedwarsRoom(roomParams(params('world=arena&room=skyreach-1&auto=1&map=skyreach')))
     new TestClient(arena, 'Ash')
@@ -106,9 +137,10 @@ describe('matchmaking from the hub', () => {
     expect(joinTarget(room({ world: 'sandbox', room: 'practice', phase: 'playing' }))).toEqual({ world: 'sandbox', room: 'practice' })
   })
 
-  test('a matchmaking room never shares a key with the same-named direct room', () => {
+  test('every server room starts itself; auto still marks the matchmaking room in the key', () => {
     expect(createBedwarsRoom(roomParams(params('room=x&auto=1'))).rules.minPlayers).toBe(1)
-    expect(createBedwarsRoom(roomParams(params('room=x'))).rules.minPlayers).toBe(2)
+    expect(createBedwarsRoom(roomParams(params('room=x'))).rules.minPlayers).toBe(1)
+    expect(bedwarsRooms.key(params('room=x&auto=1'))).not.toBe(bedwarsRooms.key(params('room=x')))
   })
 })
 

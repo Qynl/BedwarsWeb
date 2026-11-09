@@ -41,7 +41,7 @@ export interface MatchTarget {
 /** The server's room list, or null when there is no server to ask (offline, or it is down). */
 export async function fetchRooms(): Promise<RoomList | null> {
   try {
-    const r = await fetch('/api/rooms', { cache: 'no-store' })
+    const r = await fetch('/api/rooms', { cache: 'no-store', signal: AbortSignal.timeout(3000) })
     if (!r.ok) return null
     const body = (await r.json()) as { online: number; rooms: { summary: Omit<RoomInfo, 'connections'>; connections: number }[] }
     return { online: body.online, rooms: body.rooms.map((l) => ({ ...l.summary, connections: l.connections })) }
@@ -107,7 +107,7 @@ export function bestRoom(rooms: RoomInfo[]): RoomInfo | null {
 
 export function statusLabel(r: RoomInfo): string {
   if (r.world === 'sandbox') return 'Sandbox'
-  if (r.phase === 'waiting') return r.auto ? 'Starts on its own' : 'Waiting for players'
+  if (r.phase === 'waiting') return 'Starting soon'
   if (r.phase === 'countdown') return 'Starting'
   if (r.phase === 'playing') return r.bots > 0 ? `In game, ${r.bots} bot ${r.bots === 1 ? 'seat' : 'seats'} to take` : 'In game, full'
   return 'Round over'

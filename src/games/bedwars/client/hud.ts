@@ -1,16 +1,15 @@
-import { TEAM_COLORS, TEAM_NAMES, TEAMS, type TeamId } from '../blocks'
+import { TEAM_COLORS, TEAM_NAMES, type TeamId } from '../blocks'
 import { BRAND, MAX_HEALTH, TPS } from '../constants'
 import { OFFERS, TOOL_TIER_COST, UPGRADES, type Offer, type OfferCategory } from '../shop'
 import { countItem, HOTBAR, INVENTORY_SIZE } from '../../../engine/inventory'
 import { ARMOR_ORDER, AXES, item, PICKAXES } from '../items'
 import type { ServerMessage } from '../protocol'
-import { BOT_LEVELS, type BotLevel } from '../rules'
 import type { Game } from './game'
 import { keyLabel, type Action } from './settings'
 import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
 import { remixButton, summaryLine } from './promo'
-import { ARENA_IDS, ARENA_NAMES, fetchRooms, inviteLink, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
+import { ARENA_NAMES, fetchRooms, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
 
 const RESOURCE_COLORS: Record<string, string> = { iron: '#e8e8e8', gold: '#f2cf4a', diamond: '#5fe0d8', emerald: '#38d36b' }
 
@@ -62,7 +61,7 @@ export class Hud {
   private slots: HTMLDivElement[] = []
   private titleUntil = 0
   private debugOn = false
-  private modalKind: 'shop' | 'upgrades' | 'inventory' | 'games' | 'servers' | null = null
+  private modalKind: 'shop' | 'upgrades' | 'inventory' | 'servers' | null = null
   /** The server's room list, polled while in the hub for the sidebar and the gateways. */
   private hubList: RoomList | null = null
   private hubFetchedAt = 0
@@ -126,21 +125,27 @@ export class Hud {
     const k = (a: Action) => (this.game.settings.keys[a] ?? []).map(keyLabel).join(' or ') || 'unbound'
     const sprint = this.game.settings.sprintMode === 'always' ? 'always on' : `${k('sprint')}${this.game.settings.doubleTapSprint ? ', or double-tap forward' : ''}`
     const hub = this.game.inHub
-    const hubButtons = hub ? '<button class="btn" data-pause="games">Game menu</button><button class="btn" data-pause="servers">Rooms</button>' : ''
+    const hubButtons = hub ? '<button class="btn" data-pause="play">Find a match</button><button class="btn" data-pause="servers">Rooms</button>' : ''
+    const invite = !hub && !this.game.mode.offline && this.game.mode.world === 'arena' ? '<button class="btn" data-pause="invite">Invite</button>' : ''
     this.help.innerHTML = `<div class="help-card"><h1>${BRAND}</h1>
-      <div class="pause-row"><button class="btn primary" data-pause="resume">Back to game</button>${hubButtons}<button class="btn" data-pause="wardrobe">Wardrobe</button><button class="btn" data-pause="settings">Settings</button>${this.game.mode.canHub && !hub ? '<button class="btn" data-pause="hub">Server hub</button>' : ''}<button class="btn" data-pause="leave">Leave</button>${remixButton()}</div>
+      <div class="pause-row"><button class="btn primary" data-pause="resume">Back to game</button>${hubButtons}${invite}<button class="btn" data-pause="wardrobe">Wardrobe</button><button class="btn" data-pause="settings">Settings</button>${this.game.mode.canHub && !hub ? '<button class="btn" data-pause="hub">Server hub</button>' : ''}<button class="btn" data-pause="leave">Leave</button>${remixButton()}</div>
       <div class="keys">
         <span><kbd>${k('forward')}</kbd> <kbd>${k('left')}</kbd> <kbd>${k('back')}</kbd> <kbd>${k('right')}</kbd> move</span>
         <span><kbd>${k('jump')}</kbd> jump</span><span><kbd>${k('sneak')}</kbd> sneak</span><span><kbd>${sprint}</kbd> sprint</span>
         <span><kbd>Left click</kbd> ${hub ? 'swing' : 'hit, break'}</span><span><kbd>Right click</kbd> ${hub ? 'talk to a keeper' : 'place, use, shop'}</span><span><kbd>1-9</kbd> hotbar</span>
-        <span><kbd>${k('drop')}</kbd> drop</span><span><kbd>${k('inventory')}</kbd> inventory</span><span><kbd>${k('shop')}</kbd> ${hub ? 'game menu' : 'shop'}</span><span><kbd>${k('players')}</kbd> players</span>
+        <span><kbd>${k('drop')}</kbd> drop</span><span><kbd>${k('inventory')}</kbd> inventory</span><span><kbd>${k('shop')}</kbd> ${hub ? 'find a match' : 'shop'}</span><span><kbd>${k('players')}</kbd> players</span>
         <span><kbd>${k('chat')}</kbd> chat</span><span><kbd>${k('debug')}</kbd> debug</span>
       </div><p class="muted small">Every control is explained, and can be changed, in Settings, Controls.</p></div>`
     this.help.querySelector('[data-pause="resume"]')!.addEventListener('click', () => this.game.lock())
     this.help.querySelector('[data-pause="settings"]')!.addEventListener('click', () => this.openSettingsWindow())
     this.help.querySelector('[data-pause="wardrobe"]')!.addEventListener('click', () => this.openWardrobeWindow())
     this.help.querySelector('[data-pause="hub"]')?.addEventListener('click', () => this.game.returnToHub())
-    this.help.querySelector('[data-pause="games"]')?.addEventListener('click', () => this.openGames())
+    this.help.querySelector('[data-pause="play"]')?.addEventListener('click', () => this.game.playBedwars())
+    this.help.querySelector('[data-pause="invite"]')?.addEventListener('click', () => {
+      const url = location.href
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => this.toast('Invite link copied'), () => this.toast(url))
+      else this.toast(url)
+    })
     this.help.querySelector('[data-pause="servers"]')?.addEventListener('click', () => this.openServers())
     this.help.querySelector('[data-pause="leave"]')!.addEventListener('click', () => {
       this.game.destroy()
@@ -187,7 +192,7 @@ export class Hud {
     this.root.remove()
   }
 
-  /** Whether the player has ever captured the mouse in this room; the hub waits for a click. */
+  /** Whether the player has ever captured the mouse in this room; the world waits for a click. */
   private everLocked = false
 
   setLocked(locked: boolean) {
@@ -195,21 +200,21 @@ export class Hud {
     this.syncMenus()
   }
 
-  /** In the lobby, Esc opens the lobby screen; otherwise it opens the pause menu. */
-  private inLobby(): boolean {
-    const v = this.game.gameView
-    return !!v && v.mode === 'arena' && (v.phase === 'waiting' || v.phase === 'countdown')
+  /** Mouse capture was refused: show the pause card so the player is never stuck. */
+  pointerLockFailed() {
+    this.everLocked = true
+    this.syncMenus()
+    this.toast('Mouse capture is blocked in this browser; the menu is open instead.')
   }
 
   private syncMenus() {
     // Scripted play (game.automation) never captures the mouse; treat it as playing.
     const free = !this.game.locked && !this.game.automation && !this.modalOpen
-    // The hub opens with the world in view, not a pause card: the card appears only
-    // once the player has captured the mouse and then let it go (Esc).
-    const hubWaiting = this.game.inHub && !this.everLocked
-    this.help.classList.toggle('hidden', !free || this.inLobby() || hubWaiting)
-    this.backdrop.classList.toggle('show', free && this.inLobby())
-    this.lobby.classList.toggle('open', free && this.inLobby())
+    // Every world opens with the world in view, not a pause card: the card appears
+    // only once the player has captured the mouse and then let it go (Esc).
+    const fresh = !this.game.locked && !this.game.automation && !this.everLocked
+    this.help.classList.toggle('hidden', !free || fresh)
+    this.backdrop.classList.remove('show')
   }
 
   showError(reason: string) {
@@ -237,7 +242,7 @@ export class Hud {
     const online = !!this.game.mode.canHub
     this.summary.innerHTML = `<div class="window-head"><h2>${title}</h2><button class="btn ghost" data-close>Close</button></div>
       <table><thead><tr><th>Player</th><th>Finals</th><th>Kills</th><th>Beds</th><th>Deaths</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="muted small">The lobby returns in ${Math.round(m.lobbyIn / TPS)} seconds.${online ? ' Or go straight back to the hub for another round.' : ''}</p>
+      <p class="muted small">The next round starts in ${Math.round(m.lobbyIn / TPS)} seconds.${online ? ' Or go straight back to the hub for another round.' : ''}</p>
       ${online ? '<div class="row"><button class="btn primary" data-again>Find a new game</button><button class="btn" data-hub>Return to hub</button></div>' : ''}
       ${summaryLine()}`
     this.summary.classList.add('show')
@@ -355,14 +360,14 @@ export class Hud {
     this.game.lock()
   }
 
-  private openModal(kind: 'shop' | 'upgrades' | 'inventory' | 'games' | 'servers') {
+  private openModal(kind: 'shop' | 'upgrades' | 'inventory' | 'servers') {
     this.modalKind = kind
     // The content may have been cleared by a close; never let a stale cache key skip the draw.
     this.modal.dataset.key = ''
     document.exitPointerLock?.()
     this.modal.classList.add('show')
     this.renderModal()
-    if (kind === 'games' || kind === 'servers') void this.refreshHubRooms()
+    if (kind === 'servers') void this.refreshHubRooms()
   }
 
   openShop(kind: 'shop' | 'upgrades') {
@@ -371,11 +376,6 @@ export class Hud {
 
   openInventory() {
     this.openModal('inventory')
-  }
-
-  /** The hub's bed-wars gateway: quick play, a map, solo or the practice sandbox. */
-  openGames() {
-    this.openModal('games')
   }
 
   /** Every public room on the server, with its arena, phase and people. */
@@ -391,7 +391,7 @@ export class Hud {
     const list = await fetchRooms()
     this.hubRefreshing = false
     this.hubList = list
-    if (this.modalKind === 'games' || this.modalKind === 'servers') this.renderModal()
+    if (this.modalKind === 'servers') this.renderModal()
   }
 
   // Per-frame ---------------------------------------------------------------
@@ -434,8 +434,6 @@ export class Hud {
     this.lastRender = now
     if (!self) return
     this.renderHotbar()
-    const placeholder = g.inHub ? 'Chat with everyone; / for commands' : 'Team chat; start with ! for everyone, / for commands'
-    if (this.chatInput.placeholder !== placeholder) this.chatInput.placeholder = placeholder
     this.renderStats()
     this.renderSidebar()
     this.renderLobby()
@@ -495,7 +493,7 @@ export class Hud {
         `<div class="brand">${BRAND} NETWORK</div>`,
         `<div class="line">Online <b>${online ?? '…'}</b> · ${g.views.length} in the hub</div>`,
         `<div class="line muted">Bedwars matches: <b>${matches ?? '…'}</b></div>`,
-        `<div class="line muted small">Right-click a keeper to play. B opens the game menu.</div>`,
+        `<div class="line muted small">Right-click a keeper to play. B finds a match.</div>`,
       ]
       if (pk) {
         rows.push('<div class="hub-rule"></div>')
@@ -511,7 +509,7 @@ export class Hud {
     }
     const rows: string[] = [`<div class="brand">${BRAND}</div>`]
     if (view.mode === 'sandbox') rows.push('<div class="line muted">Sandbox: try every mechanic. /help for commands.</div>')
-    else if (view.phase === 'waiting') rows.push('<div class="line muted">Waiting for players</div>')
+    else if (view.phase === 'waiting') rows.push('<div class="line muted">Starting soon</div>')
     else if (view.phase === 'countdown') rows.push(`<div class="line">Starting in <b>${Math.ceil(g.clock() / TPS)}</b></div>`)
     else if (view.phase === 'playing') {
       rows.push(`<div class="line muted">Time <b>${clock(g.clock())}</b></div>`)
@@ -535,79 +533,26 @@ export class Hud {
     }
   }
 
-  /** The invite link was just copied (the button says so for a moment). */
-  private copied = false
-
+  /**
+   * The pre-round strip: one line at the top of the screen, never a blocking
+   * card. The world is the lobby; it starts on its own and bots fill the teams.
+   */
   private renderLobby() {
     const g = this.game
     if (g.gameView?.phase === 'waiting') this.summary.classList.remove('show')
     const view = g.gameView
-    const self = g.self!
     const show = !!view && view.mode === 'arena' && (view.phase === 'waiting' || view.phase === 'countdown')
     this.lobby.classList.toggle('show', show)
+    this.root.classList.toggle('starting', show)
     if (!show || !view) return
-    const isHost = view.host === g.myId
-    const people = g.views.filter((p) => !p.bot)
-    const key = JSON.stringify([view.teams, view.phase, Math.ceil(g.clock() / TPS), self.team, isHost, view.bots, g.botLevel, people.map((p) => [p.id, p.name, p.team]), g.votes, g.myVote, g.locked, this.copied])
+    const seconds = Math.max(0, Math.ceil(g.clock() / TPS))
+    const people = g.views.filter((p) => !p.bot).length
+    const key = `${view.phase}:${seconds}:${people}:${view.bots}:${g.map?.name ?? ''}`
     if (this.lobby.dataset.key === key) return
     this.lobby.dataset.key = key
-    const teamButtons = TEAMS.map((t) => {
-      const n = g.views.filter((p) => p.team === t).length
-      return `<button class="btn team${self.team === t ? ' chosen' : ''}" data-team="${t}" style="--team:${TEAM_COLORS[t]}"><i></i>${TEAM_NAMES[t]}<span>${n}</span></button>`
-    }).join('')
-    const humans = people.length
-    if (g.locked) {
-      // Playing on the lobby deck: a one-line banner; Esc opens the full lobby screen.
-      this.lobby.innerHTML = `<div class="banner">${view.phase === 'countdown' ? `Starting in ${Math.ceil(g.clock() / TPS)}` : 'Waiting for players'}. Press Esc to pick a team${isHost ? ' or start' : ''}.</div>`
-      return
-    }
-    const q = new URLSearchParams(location.search)
-    const roomName = q.get('room') ?? 'main'
-    const invite = g.mode.offline ? null : inviteLink(roomName, { private: q.get('private') === '1', fast: q.get('fast') === '1', auto: q.get('auto') === '1', map: q.get('map') ?? undefined })
-    const status =
-      view.phase === 'countdown'
-        ? `The round starts in ${Math.ceil(g.clock() / TPS)} seconds.`
-        : humans < 2
-          ? `Waiting for someone else to join.${isHost ? ' You can also start now and play the bots.' : ''}`
-          : isHost
-            ? 'Everyone here can start. Press Start now when you are ready.'
-            : 'Waiting for the host to start.'
-    const roster = people
-      .map((p) => `<li><i style="background:${p.team ? TEAM_COLORS[p.team] : '#8b8b8b'}"></i>${escapeHtml(p.name)}${p.id === g.myId ? ' <span class="muted">(you)</span>' : ''}${p.id === view.host ? ' <span class="tag">host</span>' : ''}<span class="muted right">${p.team ? TEAM_NAMES[p.team] : 'no team yet'}</span></li>`)
-      .join('')
-    this.lobby.innerHTML = `
-      <div class="lobby-head"><h2>${view.phase === 'countdown' ? `Starting in ${Math.ceil(g.clock() / TPS)}` : 'Waiting for players'}</h2>${g.mode.offline ? '<span class="tag">Solo</span>' : `<span class="tag">Room ${escapeHtml(roomName)}${q.get('private') === '1' ? ' · invite only' : ''}</span>`}</div>
-      <p class="status-line">${status}</p>
-      ${invite ? `<div class="invite-row"><input readonly value="${escapeHtml(invite)}" aria-label="Invite link"><button class="btn" data-act="copy">${this.copied ? 'Copied' : 'Copy invite link'}</button></div>` : ''}
-      <p class="label">In this room (${humans})</p>
-      <ul class="roster">${roster}</ul>
-      ${view.bots ? `<p class="muted small">${levelName(g.botLevel)} bots fill empty teams when the round starts; anyone who joins mid-round takes a bot's place.</p>` : ''}
-      <p class="label">Team</p>
-      <div class="team-grid">${teamButtons}</div>
-      ${g.votes ? `<p class="label">Arena</p><div class="map-grid">${g.votes.maps.map((m) => `<button class="btn map${g.myVote === m.id ? ' chosen' : ''}" data-map="${m.id}">${m.name}<span>${m.votes}</span></button>`).join('')}</div>` : ''}
-      ${isHost && view.bots ? `<p class="label">Bot level</p><div class="team-grid">${BOT_LEVELS.map((l) => `<button class="btn${g.botLevel === l ? ' chosen' : ''}" data-level="${l}">${levelName(l)}</button>`).join('')}</div>` : ''}
-      ${isHost ? `<div class="row"><button class="btn primary" data-act="start"${view.phase === 'countdown' ? ' disabled' : ''}>Start now</button><button class="btn" data-act="bots">${view.bots ? 'Bots: on' : 'Bots: off'}</button><button class="btn" data-act="resume">Back to game</button></div>` : '<div class="row"><button class="btn" data-act="resume">Back to game</button></div>'}`
-    this.lobby.querySelector('[data-act="resume"]')?.addEventListener('click', () => g.lock())
-    this.lobby.querySelector('[data-act="copy"]')?.addEventListener('click', () => {
-      const field = this.lobby.querySelector<HTMLInputElement>('.invite-row input')!
-      field.select()
-      const done = () => {
-        this.copied = true
-        setTimeout(() => (this.copied = false), 2000)
-      }
-      if (navigator.clipboard) navigator.clipboard.writeText(field.value).then(done, () => document.execCommand('copy') && done())
-      else if (document.execCommand('copy')) done()
-    })
-    this.lobby.querySelectorAll<HTMLButtonElement>('[data-team]').forEach((b) => b.addEventListener('click', () => g.send({ t: 'team', team: b.dataset.team as TeamId })))
-    this.lobby.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((b) =>
-      b.addEventListener('click', () => {
-        g.myVote = b.dataset.map!
-        g.send({ t: 'vote', map: b.dataset.map! })
-      }),
-    )
-    this.lobby.querySelector('[data-act="start"]')?.addEventListener('click', () => g.send({ t: 'start' }))
-    this.lobby.querySelector('[data-act="bots"]')?.addEventListener('click', () => g.send({ t: 'settings', bots: !view.bots }))
-    this.lobby.querySelectorAll<HTMLButtonElement>('[data-level]').forEach((b) => b.addEventListener('click', () => g.send({ t: 'settings', bots: view.bots, botLevel: b.dataset.level as BotLevel })))
+    const starting = view.phase === 'countdown' ? `starting in ${seconds}s` : 'starting'
+    const fill = view.bots ? ' · bots fill the other teams' : ''
+    this.lobby.innerHTML = `<div class="banner"><b>BEDWARS</b> · ${escapeHtml(g.map?.name ?? 'Arena')} — ${starting} · ${people} ${people === 1 ? 'player' : 'players'}${fill}</div>`
   }
 
   /** The storm or meteor banner, with the ticks left on it. */
@@ -638,8 +583,12 @@ export class Hud {
     let text = ''
     const pk = this.game.parkourInfo()
     if (pk?.result) text = `<div class="sub">Parkour ${escapeHtml(pk.result)}</div>`
-    else if (this.game.inHub && !this.game.locked && !this.game.automation && !this.game.uiOpen && this.help.classList.contains('hidden'))
-      text = '<div class="sub">Click to look around · right-click a keeper to play</div>'
+    else if (!this.game.locked && !this.game.automation && !this.game.uiOpen && this.help.classList.contains('hidden'))
+      text = this.game.inHub
+        ? '<div class="sub">Click to look around · right-click a keeper or walk through the gate to play</div>'
+        : this.game.mode.world === 'sandbox'
+          ? '<div class="sub">Click to look around · /help for commands</div>'
+          : '<div class="sub">Click to look around · the match starts on its own</div>'
     if (self.respawnIn !== null) text = `<div class="big">You died</div><div class="sub">Respawning in ${Math.ceil(self.respawnIn / TPS)}</div>`
     else if (self.eliminated && this.game.gameView?.phase === 'playing') text = '<div class="sub">Spectating. Fly with WASD, Space and Shift.</div>'
     if (this.center.dataset.html !== text) {
@@ -665,13 +614,12 @@ export class Hud {
     if (!self || !this.modalKind) return
     // The hub's windows are made of the room list: redraw them only when it changes,
     // so scrolling and clicking in a list are not interrupted 60 times a second.
-    if (this.modalKind === 'games' || this.modalKind === 'servers') {
+    if (this.modalKind === 'servers') {
       const rooms = this.hubList?.rooms ?? []
-      const key = JSON.stringify([this.modalKind, this.hubList?.online ?? null, rooms.map((r) => [r.room, r.world, r.phase, r.players, r.bots, r.auto, r.mapId, r.fast])])
+      const key = JSON.stringify([this.hubList?.online ?? null, rooms.map((r) => [r.room, r.world, r.phase, r.players, r.bots, r.auto, r.mapId, r.fast])])
       if (this.modal.dataset.key === key) return
       this.modal.dataset.key = key
-      if (this.modalKind === 'games') this.renderGames()
-      else this.renderServers()
+      this.renderServers()
       return
     }
     const key = JSON.stringify([this.modalKind, this.shopTab, self.inventory, self.armor, self.upgrades, self.pickaxeTier, self.axeTier, this.pickedSlot])
@@ -752,44 +700,6 @@ export class Hud {
     this.modal.querySelectorAll<HTMLButtonElement>('[data-upgrade]').forEach((b) => b.addEventListener('click', () => this.game.send({ t: 'upgrade', id: b.dataset.upgrade as never })))
   }
 
-  private renderGames() {
-    const arena = this.hubList?.rooms.filter((r) => r.world === 'arena' && r.phase !== 'ended') ?? []
-    const playing = (id: string) => arena.filter((r) => r.mapId === id).reduce((n, r) => n + r.players, 0)
-    const cards = ARENA_IDS.map((id) => {
-      const n = playing(id)
-      return `<button class="map-card" data-map-join="${id}">
-        <span class="map-art ${id}"></span>
-        <b>${ARENA_NAMES[id]}</b>
-        <span class="muted small">${n ? `${n} ${n === 1 ? 'player' : 'players'} in matches` : 'no matches yet'}</span>
-      </button>`
-    }).join('')
-    this.modal.innerHTML = `<div class="window panel wide">
-      <div class="window-head"><h2>Bedwars</h2><button class="btn ghost" data-close>Close</button></div>
-      <p class="muted small">Four teams, four beds, one survivor. Matches start on their own and bots fill the empty seats, so you can play right away; anyone can join mid-round and take a bot's place.</p>
-      <button class="btn primary wide" data-quick>Quick play <span class="muted small">join the busiest match</span></button>
-      <p class="label">Pick an arena</p>
-      <div class="map-cards">${cards}</div>
-      <p class="label">More on this server</p>
-      <div class="gateway-row">
-        <button class="btn" data-solo>Solo vs bots</button>
-        <button class="btn" data-practice>Practice sandbox</button>
-        <button class="btn" data-browse>All rooms</button>
-        <button class="btn" data-wardrobe>Wardrobe</button>
-      </div>
-      <p class="hub-online muted small">${this.hubList ? `${this.hubList.online} ${this.hubList.online === 1 ? 'person' : 'people'} on the server` : 'Checking the server…'}</p>
-    </div>`
-    this.modal.querySelector('[data-close]')!.addEventListener('click', () => this.closeModal())
-    this.modal.querySelector('[data-quick]')!.addEventListener('click', () => this.game.playBedwars())
-    this.modal.querySelector('[data-solo]')!.addEventListener('click', () => this.game.playSolo())
-    this.modal.querySelector('[data-practice]')!.addEventListener('click', () => this.game.goPractice())
-    this.modal.querySelector('[data-browse]')!.addEventListener('click', () => this.openServers())
-    this.modal.querySelector('[data-wardrobe]')!.addEventListener('click', () => {
-      this.closeModal()
-      this.openWardrobeWindow()
-    })
-    this.modal.querySelectorAll<HTMLButtonElement>('[data-map-join]').forEach((b) => b.addEventListener('click', () => this.game.playBedwars(b.dataset.mapJoin)))
-  }
-
   private renderServers() {
     const rooms = this.hubList?.rooms ?? []
     const rows = rooms.length
@@ -800,15 +710,14 @@ export class Hud {
             <button class="btn" data-room="${i}">${openSeats(r) ? 'Join' : 'Watch'}</button>
           </div>`)
           .join('')
-      : `<p class="muted small">${this.hubList ? 'No public rooms right now. Press Quick play in the Bedwars window and one will be made for you.' : 'Could not reach the server.'}</p>`
+      : `<p class="muted small">${this.hubList ? 'No public rooms right now. Walk through the gate or press B and one will be made for you.' : 'Could not reach the server.'}</p>`
     this.modal.innerHTML = `<div class="window panel wide">
       <div class="window-head"><h2>Server browser</h2><button class="btn ghost" data-close>Close</button></div>
       <p class="muted small">Every public room on this server. ${this.hubList ? `${this.hubList.online} ${this.hubList.online === 1 ? 'person is' : 'people are'} online, including this hub.` : ''}</p>
       <div class="room-list">${rows}</div>
-      <div class="gateway-row"><button class="btn primary" data-back-games>Bedwars</button><button class="btn" data-refresh>Refresh</button></div>
+      <div class="gateway-row"><button class="btn primary" data-close>Done</button><button class="btn" data-refresh>Refresh</button></div>
     </div>`
-    this.modal.querySelector('[data-close]')!.addEventListener('click', () => this.closeModal())
-    this.modal.querySelector('[data-back-games]')!.addEventListener('click', () => this.openGames())
+    this.modal.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => this.closeModal()))
     this.modal.querySelector('[data-refresh]')!.addEventListener('click', () => void this.refreshHubRooms())
     this.modal.querySelectorAll<HTMLButtonElement>('[data-room]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -853,8 +762,4 @@ export class Hud {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-}
-
-function levelName(level: BotLevel): string {
-  return level[0].toUpperCase() + level.slice(1)
 }

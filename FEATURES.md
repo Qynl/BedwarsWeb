@@ -193,17 +193,18 @@ Every number below is in `BOT_PROFILES` (`bedwars/bots.ts`); tests in `bots.test
 The Node server's front door is a shared voxel hub instead of a web menu
 (`maps/hub.ts`, `room.ts` `mode: 'hub'`, `client/hud.ts` gateways; tests
 `hub.test.ts`).
-- [x] A generated floating-island spawn: quartz plaza and fountain, five keeper podiums, a gate, benches, lamps and a parkour tower (`hub.test.ts`)
+- [x] A generated floating-island spawn: quartz plaza and fountain, five keeper podiums, a walk-through BEDWARS gate, benches, lamps, trees and a parkour tower (`hub.test.ts`)
 - [x] Everyone spawns in the same hub room and sees each other walk, chat, Tab-list and wear their looks; nothing can be built, broken or fought, and the void puts you back on the deck (`hub.test.ts`)
 - [x] Five right-click keeper NPCs: Bedwars, Practice sandbox, Solo vs bots, Wardrobe and the live server browser (`hub.test.ts`)
-- [x] The Bedwars gateway: Quick play plus a map picker with live player counts, matchmaking rooms that start themselves in ten seconds and fill empty teams with bots (`hub.test.ts`)
-- [x] A live server browser inside the game: every public room, arena, phase, people, bots and join/watch state, refreshed while open
+- [x] No pre-game GUI card: the match deck is the world, with a one-line countdown strip, and every server room starts itself in ten seconds and fills empty teams with bots (`hub.test.ts`)
+- [x] Walk through the BEDWARS gate, right-click the Bedwars keeper or press B to join a match; `/team red|blue|green|yellow` picks a side without a menu (`hub.test.ts`)
+- [x] An optional live server browser: every public room, arena, phase, people, bots and join/watch state, refreshed while open
 - [x] Transfers are clean reconnects that keep your name; the room key carries the arena and `auto` flag so invite links rejoin the exact match (`hub.test.ts`)
 - [x] Matchmaking picks a busy lobby first, then a bot seat, then creates a fresh `arena-N` room on the chosen map (`hub.test.ts`, `lobby.test.ts`)
 - [x] Return to hub and Find a new game on the round summary, and a Server hub button in the pause card
 - [x] A hub parkour run with checkpoints, a local best time, `/spawn`, `/parkour` and `/list`
 - [x] First blood and 3/5/8/12/20/30 kill-streak announcements, and an MVP on the round summary (`hub.test.ts`)
-- [x] The main menu's Join server walks straight into the hub; Play with a code keeps the old room directory; Sites keeps its room-code flow
+- [x] The main menu's Join server walks straight into the hub; Node invite links join their room directly; Sites keeps its room-code flow
 
 ## Phase 7: themed arenas
 

@@ -157,7 +157,7 @@ function menu() {
         <p class="profile-line" id="profile">${profileLine()}</p>
         <div class="menu-buttons">
           <button class="btn primary" data-go="server">${__SITES__ ? 'Play online' : 'Join server'}</button>
-          <button class="btn" data-go="online">Play with a code</button>
+          ${__SITES__ ? '<button class="btn" data-go="online">Play with a code</button>' : ''}
           <button class="btn" data-go="solo">Solo against bots</button>
           <button class="btn" data-go="sandbox">Practice sandbox</button>
           <button class="btn" data-go="progress">Progress</button>
@@ -346,7 +346,15 @@ if (params.get('play') === '1') {
   )
 } else {
   menu()
-  // An invite link (?room=name) opens the room list with that room ready to join.
+  // An invite link (?room=name) joins that room straight away; there is no room list to go through.
   const invited = params.get('room')
-  if (invited) online({ room: cleanRoomName(invited) || 'main', private: params.get('private') === '1', fast: params.get('fast') === '1' })
+  if (invited) {
+    const room = cleanRoomName(invited) || 'main'
+    if (__SITES__) online({ room, private: params.get('private') === '1', fast: params.get('fast') === '1' })
+    else {
+      const name = savedName() || 'Player'
+      saveName(name)
+      start({ name, world: 'arena', room, fast: params.get('fast') === '1', private: params.get('private') === '1', auto: params.get('auto') === '1', map: params.get('map') ?? undefined }, false)
+    }
+  }
 }

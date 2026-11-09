@@ -17,6 +17,14 @@ const C = MID + 0.5
 export type HubNpcKind = 'bedwars' | 'practice' | 'solo' | 'wardrobe' | 'rooms'
 export type HubNpc = Npc & { kind: HubNpcKind }
 
+/** The arch behind the bed-wars keeper: walking through it joins a match. */
+export const HUB_GATE = { x: C, z: MID - 16, halfWidth: 5.5, minY: TOP, maxY: TOP + 4 }
+
+/** Whether a player's feet are in the gate's opening (the client joins a match there). */
+export function inHubGate(x: number, y: number, z: number): boolean {
+  return Math.abs(x - HUB_GATE.x) <= HUB_GATE.halfWidth && Math.abs(z - HUB_GATE.z) <= 0.7 && y >= HUB_GATE.minY - 0.2 && y <= HUB_GATE.maxY
+}
+
 /** Where the hub parkour starts, the pads to touch in order, and its finish. */
 export const HUB_PARKOUR = {
   start: [84, TOP + 1, 74] as [number, number, number],
@@ -153,6 +161,7 @@ export function createHub(): MapDef {
     { text: 'SKYSHARD NETWORK', x: C, y: TOP + 8.5, z: C + 18 },
     { text: 'Right-click a keeper to play', x: C, y: TOP + 6.5, z: C + 18 },
     { text: 'BEDWARS', x: C, y: TOP + 8.2, z: MID - 16.5 },
+    { text: 'Walk through the gate to play', x: C, y: TOP + 7.0, z: MID - 16.5 },
     { text: 'PARKOUR', x: HUB_PARKOUR.finish[0] + 0.5, y: HUB_PARKOUR.finish[1] + 2.4, z: HUB_PARKOUR.finish[2] + 0.5 },
   ]
 

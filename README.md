@@ -4,7 +4,7 @@ A complete bed-wars game in the browser and on the desktop: four teams on
 floating islands, beds to defend, forges and diamond and emerald generators,
 a shop and team upgrades, bridging, melee with knockback, bots that play a
 full round (and wrap their bed in wool first), bows, fireballs, TNT, rift
-pearls, bridge eggs and potions, five themed arenas with a lobby vote,
+pearls, bridge eggs and potions, five themed arenas,
 team chat, sound effects and particles made in code, and a practice sandbox
 with a station for every mechanic. It
 runs on Freebuff Sites with browser-hosted casual multiplayer over managed
@@ -12,12 +12,13 @@ realtime, offline in the page against bots, on an optional authoritative Node
 server, or as an Electron app.
 
 On the Node server there is no game menu to fight through: you join the
-server and spawn in a shared voxel **hub**, walk up to one of five keepers and
-right-click them to play bed-wars, practice, a private bot round, or to open
-the wardrobe and the live server browser. Matches are made for you, start on
-their own, fill empty seats with bots and let latecomers take a bot's place,
-so the server always has a round going. A parkour tower and a `/list` command
-give the hub its own life while you wait for a match.
+server and spawn in a shared voxel **hub**, walk through the BEDWARS gate, up
+to one of five keepers and right-click them, or press B to play bed-wars,
+practice, a private bot round, or to open the wardrobe and the optional server
+browser. Matches are made for you, start on their own, fill empty seats with
+bots and let latecomers take a bot's place, so the server always has a round
+going. A parkour tower and a `/list` command give the hub its own life while
+you wait for a match.
 
 What makes it SKYSHARD rather than a stock bed-wars game:
 
@@ -72,27 +73,25 @@ The menu offers several ways in:
 
 - **Join server (Node/Electron)**: the front door is the hub described below,
   with no menus between you and the game. It shows who is online, which matches
-  are running and a parkour tower. Right-click a keeper or press B:
-  - **Bedwars** — Quick play, or pick one of the five arenas. A matchmaking
-    room starts ten seconds after the first person arrives and bots fill the
-    empty teams; anyone joining an arena already in play takes a bot's seat,
-    items and all, and only watches when every seat has a person in it.
+  are running and a parkour tower. Play by walking through the BEDWARS gate,
+  right-clicking the Bedwars keeper, or pressing B:
+  - **Bedwars** — the server drops you on the match deck, counts ten seconds and
+    starts; bots fill the empty teams. Anyone joining a round already in play
+    takes a bot's seat, items and all, and only watches when every seat has a
+    person in it. There is no pre-game card to click through. Pick a team with
+    `/team red` (or blue, green, yellow) before the start.
   - **Solo vs bots** — a private room of your own, started automatically.
   - **Practice sandbox** — the test platform, with `/bot` for sparring.
   - **Wardrobe** — skins, capes, trails and kill effects.
-  - **Server browser** — every public room, its arena, state, people and open
-    seats, live.
+  - **Server browser** — an optional list of every public room, its arena,
+    state, people and open seats, live.
   Esc opens the pause card anywhere (settings, wardrobe, server hub, leave).
   The end-of-round screen can send you straight back to the hub or into a new
   match.
-- **Play with a code (Node/Electron)**: the old room directory: Quick play,
-  make a room (public or invite only), or join by name. In a room, Esc opens
-  the lobby: who is in it, an invite link to copy, team choice, the arena vote,
-  and for the host bots, their level and Start. An invite link (`?room=name`)
-  opens the room list ready to join that room.
 - **Play online (Sites)**: Host creates a room; Join uses its code or invite link.
   Four people at most, including the host. The host must keep the tab visible
-  and running; there is no host migration or persistent match history.
+  and running; there is no host migration or persistent match history. A Node
+  invite link (`?room=name`) joins that room straight away.
 - **Solo against bots**: the whole game runs in your window against three bots
   and starts by itself after five seconds. No server needed.
 - **Practice sandbox**: a test platform with a station for each mechanic
@@ -104,7 +103,7 @@ The menu offers several ways in:
 URL parameters skip the menu: `?play=1&world=hub` (the server hub),
 `?play=1&world=sandbox`, `?play=1&offline=1`, `&room=name`, `&private=1`
 (off the room list), `&fast=1` (the round's timeline runs ten times faster),
-`&auto=1` (a matchmaking room that starts itself) and `&map=skyreach`
+`&auto=1` (a matchmaking room; every server round starts itself) and `&map=skyreach`
 (its arena). `GET /api/rooms` returns the room list as JSON.
 
 ### Controls
@@ -124,11 +123,11 @@ two keys of your choice. The defaults:
 | Hotbar | 1 to 9, mouse wheel | |
 | Drop | Q | throw one of what you hold; Ctrl+Q throws the stack |
 | Inventory | E | click two slots to swap them |
-| Nearest shop | B | in the hub, the game menu (bed-wars gateways) |
-| Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands |
+| Nearest shop | B | in the hub, finds a bed-wars match |
+| Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands (`/team red`) |
 | Player list | Tab | |
 | Debug | F3 | position, speed, target, frame rate |
-| Pause, menus | Esc | the lobby screen before a round, the pause menu during one |
+| Pause, menus | Esc | the pause card anywhere; before a round a one-line start strip stays at the top |
 
 In a browser, Ctrl+W closes the tab, so sprint with R or a double-tap there
 (the desktop app has no such problem).
@@ -139,19 +138,21 @@ The hub is an ordinary authoritative room (`mode: 'hub'`) running the same
 physics and chat as a match: people walk around, see each other's skins and
 name tags, talk in one channel and press Tab for the player list. The island
 is generated in `maps/hub.ts` — a quartz plaza and fountain, five keeper
-podiums, a gate and a parkour tower of two-by-two quartz pads that climbs from
-a gold start pad to a gold finish. Times are local to the browser; the best is
-kept in local storage. `/spawn` returns to the deck, `/parkour` teleports to
-the start and `/list` names everyone in the hub. Nothing can be built or
-broken, and swings and falls are harmless: the hub is a lobby, not a fight.
+podiums, the BEDWARS arch and a parkour tower of two-by-two quartz pads that
+climbs from a gold start pad to a gold finish. Walking through the arch joins a
+match, as does the Bedwars keeper or B; nothing opens a lobby card. Times are
+local to the browser; the best is kept in local storage. `/spawn` returns to
+the deck, `/parkour` teleports to the start and `/list` names everyone in the
+hub. Nothing can be built or broken, and swings and falls are harmless: the
+hub is the lobby, not a fight, and matches start on their own.
 
 The keepers are map metadata (`Npc.kind`), drawn by the client with their own
-looks and name tags; right-clicking one opens the matching window or moves
-you into a room. A transfer is a clean reconnect: `main.ts` tears the current
-game down, keeps the name, and starts the new world from the target in the URL
-(`world`, `room`, `map`, `auto`). The server's room key includes the arena and
-`auto` flag, so a friend can be invited into the exact matchmaking room with
-the invite link.
+looks and name tags; right-clicking one moves you into a room or opens the
+wardrobe or the optional server browser. A transfer is a clean reconnect:
+`main.ts` tears the current game down, keeps the name, and starts the new world
+from the target in the URL (`world`, `room`, `map`, `auto`). The server's room
+key includes the arena and `auto` flag, so a friend can be invited into the
+exact matchmaking room with the invite link.
 
 ### Moving and bridging
 
@@ -215,7 +216,7 @@ the browser's (or the desktop app's) local storage.
 Every arena is generated in code from an `ArenaLayout` in
 `src/games/bedwars/maps/arena.ts` (where the bases, diamond islands and middle
 sit, a theme, a seed), so the same layout always builds the same world, in a
-few milliseconds. The lobby vote offers them all; Skyreach is the default.
+few milliseconds. Matchmaking picks one; Skyreach is the default.
 
 - **Skyreach** (forest): bases on a cross. Stone-and-wood houses, mossy
   yards, flowers and young trees; big oaks and birches on the diamond islands;

@@ -163,12 +163,12 @@ input[type=range]::-moz-range-thumb { width: 10px; height: 20px; background: var
 .pause-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left; margin-bottom: 12px; }
 .keys { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 14px; color: var(--window-dim); }
 .lobby { display: none; position: absolute; z-index: 5; }
-.lobby.show { display: block; left: 50%; top: 10px; transform: translateX(-50%); }
-.lobby.show .banner { padding: 4px 12px; background: var(--overlay); white-space: nowrap; }
+.lobby.show { display: block; left: 50%; top: 8px; transform: translateX(-50%); max-width: calc(100% - 16px); }
+.lobby.show .banner { padding: 4px 12px; background: var(--overlay); text-align: center; }
+.hud.starting .scoreboard { top: 58px; }
 .lobby.open { top: 50%; transform: translate(-50%, -50%); width: min(600px, calc(100% - 32px)); padding: 18px; text-shadow: none; }
 .lobby.open p { margin: 4px 0; }
 .team-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.map-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .btn.team, .btn.map { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .btn.team i { background: var(--team); }
 .btn.team span, .btn.map span { color: #e0e0e0; }
@@ -405,20 +405,6 @@ a.btn { display: inline-grid; place-items: center; text-decoration: none; }
 .window.wide { width: min(820px, 100%); }
 .gateway-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .gateway-row .btn { flex: 1 1 auto; }
-.map-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.map-card { display: grid; gap: 2px; padding: 8px; border: 0; background: var(--slot); color: #fff; text-align: left; font: 15px var(--font); text-shadow: var(--shadow); cursor: pointer; box-shadow: inset 2px 2px 0 var(--slot-lo), inset -2px -2px 0 var(--slot-hi); }
-.map-card:hover { background: #a3a3a3; }
-.map-card b { color: #fff; }
-.map-card .muted { color: #3a3a3a; text-shadow: none; }
-.map-art { display: block; height: 46px; margin-bottom: 4px; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.35); }
-.map-art.skyreach { background: linear-gradient(160deg, #9fd7ff 0 45%, #5e9a4a 45% 72%, #7a5a3a 72%); }
-.map-art.lanterns { background: linear-gradient(160deg, #f0b072 0 40%, #c9a06a 40% 68%, #7a4a2a 68%); }
-.map-art.dunes { background: linear-gradient(160deg, #f7dfa2 0 48%, #dccb92 48% 74%, #b8863e 74%); }
-.map-art.frostpeak { background: linear-gradient(160deg, #dcefff 0 46%, #f4f8fb 46% 68%, #7fb0dd 68%); }
-.map-art.ruins { background: linear-gradient(160deg, #b9cfd8 0 42%, #8a8a86 42% 72%, #55624e 72%); }
-.btn.primary.wide { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.btn.primary.wide .muted { color: #e6f0d8; text-shadow: none; }
 @media (max-width: 640px) {
-  .map-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hud.hub .sidebar { width: 180px; }
 }

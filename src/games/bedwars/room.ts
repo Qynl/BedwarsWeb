@@ -291,8 +291,8 @@ export class Room {
       p.team = null
       if (!brain) {
         this.spawnInHub(p)
-        this.event(p, 'title', BRAND, 'Right-click a keeper to play. Press B for the game menu and Tab for the player list.')
-        this.event(p, 'system', 'Welcome to the network. Walk up to a keeper and right-click to play, or press B. /list shows who is here.')
+        this.event(p, 'title', BRAND, 'Right-click a keeper or walk through the gate to play. B finds a match, Tab shows the player list.')
+        this.event(p, 'system', 'Welcome to the network. Right-click a keeper, walk through the BEDWARS gate, or press B to find a match. /list shows who is here.')
       }
     } else if (this.rules.mode === 'sandbox') {
       p.team = brain ? p.team : 'red'
@@ -742,7 +742,7 @@ export class Room {
   private command(p: Player, [name, ...args]: string[]): void {
     // The hub has its own little command set, and no round to start.
     if (this.rules.mode === 'hub') {
-      if (name === 'help') return this.event(p, 'system', 'Hub commands: /spawn (back to the deck), /parkour (to the start), /list (who is here). Right-click a keeper to play.')
+      if (name === 'help') return this.event(p, 'system', 'Hub commands: /spawn (back to the deck), /parkour (to the start), /list (who is here). Walk through the BEDWARS gate, right-click a keeper or press B to play.')
       if (name === 'spawn' || name === 'hub' || name === 'lobby') return this.spawnInHub(p)
       if (name === 'parkour') {
         const start = this.map.labels.find((l) => l.text === 'PARKOUR')
@@ -755,7 +755,27 @@ export class Room {
       }
       return this.event(p, 'error', 'Try /spawn, /parkour, /list or right-click a keeper.')
     }
-    if (name === 'help') return this.event(p, 'system', this.rules.cheats ? 'Commands: /give <item> [count], /tp <x> <y> <z>, /heal, /kit, /kill, /bot [n] [easy|normal|hard|expert], /nobots, /weather <storm|meteor|clear>, /start' : 'Commands: /start (host)')
+    if (name === 'help')
+      return this.event(
+        p,
+        'system',
+        this.rules.cheats
+          ? 'Commands: /team <red|blue|green|yellow>, /list, /give <item> [count], /tp <x> <y> <z>, /heal, /kit, /kill, /bot [n] [easy|normal|hard|expert], /nobots, /weather <storm|meteor|clear>, /start'
+          : 'Commands: /team <red|blue|green|yellow> (before the round), /list (who is here). The match starts on its own.',
+      )
+    if (name === 'team' || name === 'teams') {
+      if (this.rules.mode !== 'arena') return this.event(p, 'error', 'Teams are only for bed-wars rounds.')
+      const colour = (args[0] ?? '').toLowerCase() as TeamId
+      if (!this.rules.teams.includes(colour))
+        return this.event(p, 'system', `Teams: ${this.rules.teams.map((t) => TEAM_NAMES[t]).join(', ')}. Pick one with /team <colour>.`)
+      this.onTeam(p, colour)
+      if (p.team === colour) this.event(p, 'system', `You are on the ${TEAM_NAMES[colour]} team.`)
+      return
+    }
+    if (name === 'list' || name === 'who' || name === 'online') {
+      const names = this.humans().map((q) => q.name).join(', ')
+      return this.event(p, 'system', `${this.humans().length} here: ${names}`)
+    }
     if (name === 'start') return void (p.id === this.hostId && this.phase === 'waiting' && this.beginCountdown(true))
     if (!this.rules.cheats) return this.event(p, 'error', 'Commands are off in this room.')
     switch (name) {
@@ -1115,7 +1135,7 @@ export class Room {
     this.phase = 'ended'
     this.phaseStart = this.tickCount
     this.winner = winner
-    this.broadcastEvent('title', winner === 'draw' ? 'Draw' : `${TEAM_NAMES[winner]} wins!`, 'Back to the lobby shortly')
+    this.broadcastEvent('title', winner === 'draw' ? 'Draw' : `${TEAM_NAMES[winner]} wins!`, 'Next round starting soon')
     const players = [...this.players.values()]
       .filter((p) => p.team)
       .map((p) => ({ id: p.id, name: p.name, team: p.team as TeamId, bot: !!p.brain, ...p.stats }))

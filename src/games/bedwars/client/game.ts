@@ -23,7 +23,7 @@ import type { MapMeta } from '../maps/types'
 import { IDLE_INPUT, lookDirection, playerBox, stepMovement, type MoveInput, type Mover } from '../../../engine/physics'
 import type { ClientMessage, GameView, PlayerView, SelfView, ServerMessage } from '../protocol'
 import type { BotLevel } from '../rules'
-import { HUB_PARKOUR } from '../maps/hub'
+import { HUB_PARKOUR, inHubGate } from '../maps/hub'
 import { ARENA_NAMES, fetchRooms, pickArenaRoom, type MatchTarget } from './rooms'
 import { raycastBlock, rayBox, type BlockHit } from '../../../engine/raycast'
 import { fromBase64, World } from '../../../engine/world'
@@ -228,12 +228,18 @@ export class Game {
 
   // Moving between rooms ----------------------------------------------------
 
+  /** Set once a transfer starts, so a second keeper click or B press cannot start another. */
+  private transferring = false
+  private matchmaking = false
+
   /** Asks the page to reconnect into another room (the hub, a match, the sandbox). */
   enterRoom(target: MatchTarget): void {
+    if (this.transferring) return
     if (!this.mode.onTransfer || (target.world === 'hub' && !this.mode.canHub)) {
       this.hud.toast('You cannot go there from this screen.')
       return
     }
+    this.transferring = true
     const where = target.world === 'sandbox' ? 'the practice sandbox' : target.world === 'hub' ? 'the hub' : target.map ? (ARENA_NAMES[target.map] ?? target.room) : target.room
     this.hud.closeModal()
     this.hud.setLoading(`Joining ${where}`)
@@ -242,8 +248,12 @@ export class Game {
 
   /** Finds a bed-wars match on the server: a lobby with people, a bot seat, or a fresh matchmaking room. */
   playBedwars(map?: string): void {
+    if (this.transferring || this.matchmaking) return
+    this.matchmaking = true
     this.hud.toast(map ? `Looking for a ${ARENA_NAMES[map] ?? map} match…` : 'Looking for a match…')
-    void fetchRooms().then((list) => this.enterRoom(pickArenaRoom(list?.rooms ?? [], map)))
+    void fetchRooms()
+      .then((list) => this.enterRoom(pickArenaRoom(list?.rooms ?? [], map)))
+      .finally(() => (this.matchmaking = false))
   }
 
   /** A room of your own against bots; the server starts it after a short countdown. */
@@ -462,6 +472,7 @@ export class Game {
   private bindInput() {
     const canvas = this.renderer.domElement
     canvas.addEventListener('click', () => this.lock())
+    document.addEventListener('pointerlockerror', () => this.hud.pointerLockFailed())
     document.addEventListener('pointerlockchange', () => {
       if (!this.locked) {
         this.leftDown = this.rightDown = false
@@ -605,8 +616,8 @@ export class Game {
   }
 
   private openNearestShop() {
-    // In the hub the shop key opens the gateway menu.
-    if (this.inHub) return this.hud.openGames()
+    // In the hub the shop key finds a bed-wars match; keepers and the gate do the rest.
+    if (this.inHub) return this.playBedwars()
     const npc = this.map?.npcs
       .filter((n) => n.kind !== 'dummy')
       .map((n) => ({ n, d: Math.hypot(n.x - this.me.x, n.z - this.me.z) }))
@@ -663,7 +674,10 @@ export class Game {
     this.prev = { x: this.me.x, y: this.me.y, z: this.me.z }
     const input = this.input()
     stepMovement(this.world, this.me, input)
-    if (this.inHub) this.checkParkour()
+    if (this.inHub) {
+      this.checkParkour()
+      this.checkPortal()
+    }
     this.send({
       t: 'input',
       seq: ++this.inputSeq,
@@ -687,6 +701,15 @@ export class Game {
       else this.secondary()
     }
     this.continueActions()
+  }
+
+  /** Walk through the arch behind the bed-wars keeper to join a match, no menu involved. */
+  private portalAt = 0
+
+  private checkPortal(): void {
+    if (performance.now() < this.portalAt || !inHubGate(this.me.x, this.me.y, this.me.z)) return
+    this.portalAt = performance.now() + 3000
+    this.playBedwars()
   }
 
   /**
@@ -854,7 +877,7 @@ export class Game {
       case 'upgrades':
         return this.hud.openShop('upgrades')
       case 'bedwars':
-        return this.hud.openGames()
+        return this.playBedwars()
       case 'rooms':
         return this.hud.openServers()
       case 'wardrobe':
