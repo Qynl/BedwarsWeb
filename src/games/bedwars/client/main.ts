@@ -8,6 +8,7 @@ import { loadSettings } from './settings'
 import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
 import { openProfile } from './profile-ui'
+import { openRealMinecraft } from './real-minecraft'
 import { levelInfo, loadProfile } from './profile'
 import { bestRoom, cleanRoomName, fetchRooms, joinTarget, openSeats, randomRoomName, statusLabel, type RoomInfo, type RoomList } from './rooms'
 import { FREEBUFF_MARK, freebuffUrl, promoShown } from './promo'
@@ -179,6 +180,7 @@ function menu() {
           ${__SITES__ ? '<button class="btn" data-go="online">Play with a code</button>' : ''}
           <button class="btn" data-go="solo">Solo against bots</button>
           <button class="btn" data-go="sandbox">Practice sandbox</button>
+          <button class="btn" data-go="real">Real Minecraft (browser)</button>
           <button class="btn" data-go="progress">Progress</button>
           <div class="menu-pair"><button class="btn" data-go="wardrobe">Wardrobe</button><button class="btn" data-go="settings">Settings</button></div>
         </div>
@@ -207,6 +209,10 @@ function menu() {
       }
       if (go === 'progress') {
         openProfile(app, () => {})
+        return
+      }
+      if (go === 'real') {
+        openRealMinecraft(app, playerName())
         return
       }
       const name = playerName()

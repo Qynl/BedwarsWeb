@@ -272,6 +272,17 @@ server; it hosts SKYSHARD's own rooms. Final-death spectator flow and the shop
 GUI are simpler than in the browser; the command fallbacks above cover the
 shop.
 
+### Real Minecraft in a browser tab
+
+The menu's **Real Minecraft (browser)** button opens the open-source
+[PrismarineJS web client](https://prismarinejs.github.io/prismarine-web-client/)
+in a new tab, with the server address and offline username filled in. It is a
+real Java Edition client running in the page: mineflayer speaks the Minecraft
+protocol and a WebSocket-to-TCP proxy reaches the server. It joins normal
+**offline-mode** (`online-mode=false`) servers, so any unused name works; an
+online-mode server will reject it. It is a separate MIT client, not this game's
+engine, and it does not join SKYSHARD rooms — the Java gateway above does that.
+
 ### One command: website + Java server + free public address
 
 A static website cannot accept a Minecraft connection by itself: the client
