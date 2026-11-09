@@ -249,6 +249,7 @@ Useful environment variables:
 MC_PORT=25565                  # TCP port
 MC_HOST=0.0.0.0                # listen on the LAN instead of localhost
 MC_VERSION=1.21.8              # must match the client
+MC_WHITELIST=Alice,Bob          # optional; empty means anyone
 MC_GAME_URL='ws://127.0.0.1:3000/game?world=arena&room=mc&auto=1'
 ```
 
@@ -330,11 +331,12 @@ surprising place to keep it running.
 
 This is a session relay, not a 24/7 host: the tab/process must stay running,
 the address changes when the relay reconnects, and e4mc is a third-party free
-service. For an always-on free server, run the Node host on a free VM (or any
-machine that can listen on TCP) with `MC_PORT=25565` and expose that port, or
-keep `bun run share` running. Either way the public listener is offline-mode,
-so anyone with the address can join under any name; only share it with people
-you trust.
+service. For an always-on free server with a fixed address, see
+**[HOSTING.md](HOSTING.md)**: an Oracle Cloud Always Free VM with a Reserved
+Public IP, `compose.yaml`, and a keepalive that survives Oracle's idle policy.
+That is the recommended 24/7 setup; `bun run share` is still the quick session
+option. Either way the public listener is offline-mode, so use
+`MC_WHITELIST=...` and only share it with people you trust.
 
 The e4mc domain routes to the local Minecraft port; the website menu shows the
 address automatically when a server was started by `bun run share` (or when a

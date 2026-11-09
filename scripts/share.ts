@@ -72,6 +72,7 @@ try {
     host: mcHost,
     version: process.env.MC_VERSION,
     gameUrl: `ws://127.0.0.1:${started.port}/game?world=arena&room=mc-public&auto=1`,
+    whitelist: (process.env.MC_WHITELIST ?? '').split(',').map((name) => name.trim()).filter(Boolean),
     log: (line) => console.log(`[minecraft] ${line}`),
   })
   console.log(`  Minecraft:     localhost:${bridge.port}  (Java ${bridge.version})`)

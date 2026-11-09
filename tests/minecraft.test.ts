@@ -90,4 +90,27 @@ describe('the Java gateway', () => {
     client.end('test done')
     host.close()
   }, 30_000)
+
+  test('the optional whitelist turns away other Java names', async () => {
+    const host = createGameHost(bedwarsRooms)
+    server = createServer()
+    server.on('upgrade', (req, socket, head) => host.handleUpgrade(req, socket, head))
+    await new Promise<void>((ok) => server!.listen(0, '127.0.0.1', ok))
+    const gamePort = (server.address() as { port: number }).port
+    bridge = await startMinecraftBridge({
+      port: 0,
+      host: '127.0.0.1',
+      version: DEFAULT_MC_VERSION,
+      gameUrl: `ws://127.0.0.1:${gamePort}/game?world=sandbox&room=mc-whitelist`,
+      whitelist: ['Allowed'],
+    })
+    const blocked = mc.createClient({ host: '127.0.0.1', port: bridge.port, username: 'Blocked', version: DEFAULT_MC_VERSION, auth: 'offline' }) as any
+    const kicked = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('whitelist client was not disconnected')), 5000)
+      blocked.on('kick_disconnect', () => { clearTimeout(timer); resolve('kick') })
+      blocked.on('end', () => { clearTimeout(timer); resolve('end') })
+    })
+    expect(['kick', 'end']).toContain(kicked)
+    host.close()
+  }, 15_000)
 })

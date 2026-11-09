@@ -99,6 +99,8 @@ export interface MinecraftBridgeOptions {
   maxPlayers?: number
   /** Called with connection notices; defaults to nothing (the CLI logs). */
   log?: (line: string) => void
+  /** Optional Java usernames. Empty means everyone; names are matched case-insensitively. */
+  whitelist?: string[]
 }
 
 export interface MinecraftBridge {
@@ -124,6 +126,7 @@ export async function startMinecraftBridge(options: MinecraftBridgeOptions = {})
   const playerType = registry.entitiesByName.player?.id ?? 0
   const gameUrl = options.gameUrl ?? 'ws://127.0.0.1:3000/game?world=arena&room=mc&auto=1'
   const log = options.log ?? (() => {})
+  const whitelist = new Set((options.whitelist ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean))
   const port = options.port ?? DEFAULT_MC_PORT
 
   const server = mc.createServer({
@@ -146,6 +149,14 @@ export async function startMinecraftBridge(options: MinecraftBridgeOptions = {})
   log(`Joining ${gameUrl}`)
 
   server.on('playerJoin', (client: JavaClient) => {
+    const username = String(client.username ?? '')
+    if (whitelist.size && !whitelist.has(username.toLowerCase())) {
+      log(`${username} rejected (not on MC_WHITELIST)`)
+      try { client.end('This server has a username whitelist.') } catch { /* already gone */ }
+      return
+    }
+    log(`${username} connected`)
+    client.on('error', (error: Error) => log(`${username}: connection error (${String(error)})`))
     clients.add(client)
     bridgePlayer(client)
   })

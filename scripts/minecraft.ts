@@ -22,6 +22,7 @@ const bridge = await startMinecraftBridge({
   version,
   host: process.env.MC_HOST ?? '127.0.0.1',
   gameUrl,
+  whitelist: (process.env.MC_WHITELIST ?? '').split(',').map((name) => name.trim()).filter(Boolean),
   log: (line) => console.log(`[minecraft] ${line}`),
 })
 console.log(`\n  Minecraft ${bridge.version}: multiplayer → Direct Connection → localhost:${bridge.port}\n  Offline mode: any name, no Mojang login. The game server must be running (npm start).\n`)
