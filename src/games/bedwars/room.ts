@@ -757,7 +757,7 @@ export class Room {
     const slots = this.chestStore(p, spot.kind)
     if (!slots) return
     p.chestOpen = spot.kind
-    this.send(p, { t: 'chest', kind: spot.kind, slots })
+    this.send(p, { t: 'chest', kind: spot.kind, slots: slots.map((s) => (s ? { ...s } : null)) })
   }
 
   onChestSwap(p: Player, kind: ChestKind, a: ChestRef, b: ChestRef): void {
@@ -791,7 +791,7 @@ export class Room {
   private sendChest(p: Player): void {
     if (!p.chestOpen) return
     const slots = this.chestStore(p, p.chestOpen)
-    if (slots) this.send(p, { t: 'chest', kind: p.chestOpen, slots })
+    if (slots) this.send(p, { t: 'chest', kind: p.chestOpen, slots: slots.map((s) => (s ? { ...s } : null)) })
   }
 
   private onTeam(p: Player, team: TeamId): void {
