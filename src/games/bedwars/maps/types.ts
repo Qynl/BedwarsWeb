@@ -22,7 +22,11 @@ export interface GeneratorSpot {
 }
 
 export interface Npc {
-  kind: 'shop' | 'upgrades' | 'dummy'
+  /**
+   * Arenas have shopkeepers, upgrade keepers and training dummies. The hub
+   * adds one keeper per gateway: bedwars, practice, solo, wardrobe and rooms.
+   */
+  kind: 'shop' | 'upgrades' | 'dummy' | 'bedwars' | 'practice' | 'solo' | 'wardrobe' | 'rooms'
   team?: TeamId
   x: number
   y: number

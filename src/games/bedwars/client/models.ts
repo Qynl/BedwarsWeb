@@ -156,14 +156,24 @@ export class PlayerModels {
 const SHOPKEEPER: Look = { skin: 2, hairStyle: 0, hairColor: 6, eyes: 1, outfit: 2, outfitColor: 4, cape: 0, trail: 0, killEffect: 0 }
 const UPGRADER: Look = { skin: 4, hairStyle: 5, hairColor: 0, eyes: 4, outfit: 1, outfitColor: 5, cape: 5, trail: 0, killEffect: 0 }
 
-/** Shopkeepers and floating labels from the map. */
+/** The hub's five gateways: each keeper has its own look and tag. */
+const HUB_KEEPERS: Record<'bedwars' | 'practice' | 'solo' | 'wardrobe' | 'rooms', { look: Look; label: string }> = {
+  bedwars: { look: { skin: 2, hairStyle: 0, hairColor: 0, eyes: 0, outfit: 4, outfitColor: 3, cape: 4, trail: 0, killEffect: 0 }, label: 'Bedwars' },
+  practice: { look: { skin: 1, hairStyle: 2, hairColor: 3, eyes: 1, outfit: 0, outfitColor: 4, cape: 6, trail: 0, killEffect: 0 }, label: 'Practice sandbox' },
+  solo: { look: { skin: 4, hairStyle: 4, hairColor: 1, eyes: 3, outfit: 1, outfitColor: 7, cape: 8, trail: 0, killEffect: 0 }, label: 'Solo vs bots' },
+  wardrobe: { look: { skin: 0, hairStyle: 1, hairColor: 4, eyes: 0, outfit: 3, outfitColor: 5, cape: 2, trail: 0, killEffect: 0 }, label: 'Wardrobe' },
+  rooms: { look: { skin: 3, hairStyle: 3, hairColor: 2, eyes: 2, outfit: 5, outfitColor: 0, cape: 3, trail: 0, killEffect: 0 }, label: 'Server browser' },
+}
+
+/** Shopkeepers, the hub's gateways, and floating labels, all from the map. */
 export function createMapDecor(npcs: MapMeta['npcs'], labels: MapMeta['labels'], layout: AtlasLayout, atlas: Texture): Group {
   const group = new Group()
   for (const n of npcs) {
     if (n.kind === 'dummy') continue
     const model = new Avatar(layout, atlas)
-    model.dress(n.kind === 'shop' ? SHOPKEEPER : UPGRADER, n.team ?? null, 'leather')
-    model.setTag(n.kind === 'shop' ? 'Item shop' : 'Team upgrades', null, null, false, false)
+    const hub = n.kind === 'shop' || n.kind === 'upgrades' ? null : HUB_KEEPERS[n.kind]
+    model.dress(n.kind === 'shop' ? SHOPKEEPER : n.kind === 'upgrades' ? UPGRADER : hub!.look, n.team ?? null, 'leather')
+    model.setTag(n.kind === 'shop' ? 'Item shop' : n.kind === 'upgrades' ? 'Team upgrades' : hub!.label, null, null, false, false)
     model.root.position.set(n.x, n.y, n.z)
     model.root.rotation.y = n.yaw
     model.animate(0, { sneak: false, swing: 20, hurt: 20, shield: false, pitch: 0, speed: 0, vy: 0 })

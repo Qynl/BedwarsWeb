@@ -21,7 +21,7 @@ export const ACTIONS: ActionInfo[] = [
   { id: 'sprint', label: 'Sprint', help: 'Run faster and hit harder knockback. Hold or toggle (see Game).', keys: ['ControlLeft', 'KeyR'] },
   { id: 'drop', label: 'Drop item', help: 'Throw one of what you are holding, for a teammate to pick up. Hold Ctrl to throw the whole stack.', keys: ['KeyQ'] },
   { id: 'inventory', label: 'Inventory', help: 'Open your inventory to move items to the hotbar.', keys: ['KeyE'] },
-  { id: 'shop', label: 'Nearest shop', help: 'Open the item shop or upgrades if a shopkeeper is close.', keys: ['KeyB'] },
+  { id: 'shop', label: 'Nearest shop', help: 'Open the item shop or upgrades if a shopkeeper is close; in the hub, the game menu.', keys: ['KeyB'] },
   { id: 'chat', label: 'Chat', help: 'Talk to your team; start with ! to talk to everyone.', keys: ['KeyT', 'Enter'] },
   { id: 'command', label: 'Command', help: 'Open chat with / typed, for commands like /help.', keys: ['Slash'] },
   { id: 'players', label: 'Player list', help: 'Hold to see everyone in the room.', keys: ['Tab'] },

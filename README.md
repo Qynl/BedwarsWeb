@@ -11,6 +11,14 @@ runs on Freebuff Sites with browser-hosted casual multiplayer over managed
 realtime, offline in the page against bots, on an optional authoritative Node
 server, or as an Electron app.
 
+On the Node server there is no game menu to fight through: you join the
+server and spawn in a shared voxel **hub**, walk up to one of five keepers and
+right-click them to play bed-wars, practice, a private bot round, or to open
+the wardrobe and the live server browser. Matches are made for you, start on
+their own, fill empty seats with bots and let latecomers take a bot's place,
+so the server always has a round going. A parkour tower and a `/list` command
+give the hub its own life while you wait for a match.
+
 What makes it SKYSHARD rather than a stock bed-wars game:
 
 - **Shard cores.** Each bed is crowned by a floating team-coloured crystal.
@@ -60,19 +68,31 @@ bun run loadtest       # capacity numbers (rooms, players, CPU, bandwidth)
 
 ## Playing
 
-The menu offers three ways in:
+The menu offers several ways in:
 
+- **Join server (Node/Electron)**: the front door is the hub described below,
+  with no menus between you and the game. It shows who is online, which matches
+  are running and a parkour tower. Right-click a keeper or press B:
+  - **Bedwars** — Quick play, or pick one of the five arenas. A matchmaking
+    room starts ten seconds after the first person arrives and bots fill the
+    empty teams; anyone joining an arena already in play takes a bot's seat,
+    items and all, and only watches when every seat has a person in it.
+  - **Solo vs bots** — a private room of your own, started automatically.
+  - **Practice sandbox** — the test platform, with `/bot` for sparring.
+  - **Wardrobe** — skins, capes, trails and kill effects.
+  - **Server browser** — every public room, its arena, state, people and open
+    seats, live.
+  Esc opens the pause card anywhere (settings, wardrobe, server hub, leave).
+  The end-of-round screen can send you straight back to the hub or into a new
+  match.
+- **Play with a code (Node/Electron)**: the old room directory: Quick play,
+  make a room (public or invite only), or join by name. In a room, Esc opens
+  the lobby: who is in it, an invite link to copy, team choice, the arena vote,
+  and for the host bots, their level and Start. An invite link (`?room=name`)
+  opens the room list ready to join that room.
 - **Play online (Sites)**: Host creates a room; Join uses its code or invite link.
   Four people at most, including the host. The host must keep the tab visible
   and running; there is no host migration or persistent match history.
-- **Play online (Node/Electron)**: shows how many people are on the server and every public
-  room with its arena, state and open seats. Quick play joins the fullest lobby
-  with room (or a round with a bot seat to take); Join picks one; Create makes a
-  room, public or invite only. In a room, Esc opens the lobby: who is in it, an
-  invite link to copy, team choice, the arena vote, and for the host bots, their
-  level and Start. Anyone joining mid-round takes a bot's place, items and all,
-  and only watches when every seat has a person in it. An invite link
-  (`?room=name`) opens the room list ready to join that room.
 - **Solo against bots**: the whole game runs in your window against three bots
   and starts by itself after five seconds. No server needed.
 - **Practice sandbox**: a test platform with a station for each mechanic
@@ -81,9 +101,11 @@ The menu offers three ways in:
   spawns sparring bots (`/bot 2 hard` for two hard ones), `/nobots` clears
   them, `/help` lists the rest.
 
-URL parameters skip the menu: `?play=1&world=sandbox`, `?play=1&offline=1`,
-`&room=name`, `&private=1` (off the room list), `&fast=1` (the round's
-timeline runs ten times faster). `GET /api/rooms` returns the room list as JSON.
+URL parameters skip the menu: `?play=1&world=hub` (the server hub),
+`?play=1&world=sandbox`, `?play=1&offline=1`, `&room=name`, `&private=1`
+(off the room list), `&fast=1` (the round's timeline runs ten times faster),
+`&auto=1` (a matchmaking room that starts itself) and `&map=skyreach`
+(its arena). `GET /api/rooms` returns the room list as JSON.
 
 ### Controls
 
@@ -102,7 +124,7 @@ two keys of your choice. The defaults:
 | Hotbar | 1 to 9, mouse wheel | |
 | Drop | Q | throw one of what you hold; Ctrl+Q throws the stack |
 | Inventory | E | click two slots to swap them |
-| Nearest shop | B | |
+| Nearest shop | B | in the hub, the game menu (bed-wars gateways) |
 | Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands |
 | Player list | Tab | |
 | Debug | F3 | position, speed, target, frame rate |
@@ -110,6 +132,26 @@ two keys of your choice. The defaults:
 
 In a browser, Ctrl+W closes the tab, so sprint with R or a double-tap there
 (the desktop app has no such problem).
+
+### The hub
+
+The hub is an ordinary authoritative room (`mode: 'hub'`) running the same
+physics and chat as a match: people walk around, see each other's skins and
+name tags, talk in one channel and press Tab for the player list. The island
+is generated in `maps/hub.ts` — a quartz plaza and fountain, five keeper
+podiums, a gate and a parkour tower of two-by-two quartz pads that climbs from
+a gold start pad to a gold finish. Times are local to the browser; the best is
+kept in local storage. `/spawn` returns to the deck, `/parkour` teleports to
+the start and `/list` names everyone in the hub. Nothing can be built or
+broken, and swings and falls are harmless: the hub is a lobby, not a fight.
+
+The keepers are map metadata (`Npc.kind`), drawn by the client with their own
+looks and name tags; right-clicking one opens the matching window or moves
+you into a room. A transfer is a clean reconnect: `main.ts` tears the current
+game down, keeps the name, and starts the new world from the target in the URL
+(`world`, `room`, `map`, `auto`). The server's room key includes the arena and
+`auto` flag, so a friend can be invited into the exact matchmaking room with
+the invite link.
 
 ### Moving and bridging
 

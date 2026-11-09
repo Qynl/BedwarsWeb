@@ -74,6 +74,8 @@ export const RUINS: ArenaLayout = {
 }
 
 export const ARENAS: ArenaLayout[] = [SKYREACH, LANTERNS, DUNES, FROSTPEAK, RUINS]
+/** The layouts in the order the server offers them (kept in step with `ARENA_IDS` in client/rooms.ts). */
+export const ARENA_IDS = ARENAS.map((a) => a.id)
 
 export function arenaLayout(id: string | undefined): ArenaLayout {
   return ARENAS.find((a) => a.id === id) ?? SKYREACH

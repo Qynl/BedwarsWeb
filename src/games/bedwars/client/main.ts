@@ -9,7 +9,7 @@ import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
 import { openProfile } from './profile-ui'
 import { levelInfo, loadProfile } from './profile'
-import { bestRoom, cleanRoomName, fetchRooms, openSeats, randomRoomName, statusLabel, type RoomInfo, type RoomList } from './rooms'
+import { bestRoom, cleanRoomName, fetchRooms, joinTarget, openSeats, randomRoomName, statusLabel, type RoomInfo, type RoomList } from './rooms'
 import { FREEBUFF_MARK, freebuffUrl, promoShown } from './promo'
 import '@fontsource/pixelify-sans/400.css'
 import '@fontsource/pixelify-sans/700.css'
@@ -17,6 +17,9 @@ import { drawTile } from '../../../engine/render/textures'
 import './styles.css'
 
 type JoinOptions = RoomParams & { name: string; hosting?: boolean }
+
+/** The game on screen now, so a transfer can tear it down before the next one starts. */
+let active: Game | null = null
 
 const params = new URLSearchParams(location.search)
 const app = document.getElementById('app')!
@@ -53,6 +56,10 @@ function profileLine(): string {
 }
 
 function start(options: JoinOptions, offline: boolean) {
+  // The hub lives on the shared server; a local or Sites build has no one to share it with.
+  if (options.world === 'hub' && (offline || __SITES__)) options = { ...options, world: 'arena' }
+  active?.destroy()
+  active = null
   try {
     localStorage.setItem('name', options.name)
   } catch {}
@@ -60,6 +67,8 @@ function start(options: JoinOptions, offline: boolean) {
   const query = new URLSearchParams({ play: '1', name: options.name, world: options.world, room: options.room })
   if (options.fast) query.set('fast', '1')
   if (!__SITES__ && options.private) query.set('private', '1')
+  if (!__SITES__ && options.auto) query.set('auto', '1')
+  if (options.map) query.set('map', options.map)
   if (offline) query.set('offline', '1')
   if (__SITES__ && options.hosting && !offline) query.set('host', '1')
   history.replaceState(null, '', `?${query}`)
@@ -72,10 +81,38 @@ function start(options: JoinOptions, offline: boolean) {
     ? connectLocal<ClientMessage, ServerMessage>(createBedwarsRoom(options, true), options.name, bedwarsCodec)
     : __SITES__ ? connectSites({ ...options, hosting: !!options.hosting })
     : connectOnline<ClientMessage, ServerMessage>(
-        { name: options.name, world: options.world, room: options.room, ...(options.fast ? { fast: '1' } : {}), ...(options.private ? { private: '1' } : {}) },
+        {
+          name: options.name,
+          world: options.world,
+          room: options.room,
+          ...(options.fast ? { fast: '1' } : {}),
+          ...(options.private ? { private: '1' } : {}),
+          ...(options.auto ? { auto: '1' } : {}),
+          ...(options.map ? { map: options.map } : {}),
+        },
         bedwarsCodec,
       )
-  const game = new Game(app, connection, loadSettings(), { offline, world: options.world })
+  const game = new Game(app, connection, loadSettings(), {
+    offline,
+    world: options.world,
+    room: options.room,
+    canHub: !offline && !__SITES__,
+    // A keeper or the end screen asks for another room: keep the name and go.
+    onTransfer: (target) =>
+      start(
+        {
+          name: options.name,
+          world: target.world,
+          room: target.room,
+          fast: !!target.fast,
+          private: !!target.private,
+          auto: !!target.auto,
+          map: target.map,
+        },
+        !!target.offline,
+      ),
+  })
+  active = game
   game.applySettings(game.settings)
   ;(window as unknown as { game: Game }).game = game
 }
@@ -90,7 +127,7 @@ const splash = () => SPLASHES[Math.floor(Math.random() * SPLASHES.length)]
 function onlineLine(list: RoomList | null): string {
   if (!list) return ''
   const n = list.online
-  return `<span class="dot${n ? ' on' : ''}"></span>${n === 0 ? 'Nobody online yet: start a room and invite a friend' : `${n} ${n === 1 ? 'person' : 'people'} playing online now`}`
+  return `<span class="dot${n ? ' on' : ''}"></span>${n === 0 ? 'Nobody on the server right now: join the hub and be the first' : `${n} ${n === 1 ? 'person' : 'people'} on the server now`}`
 }
 
 /** Refreshes `update` every few seconds for as long as `anchor` stays on the page. */
@@ -119,13 +156,14 @@ function menu() {
         <p class="online-line" id="online"></p>
         <p class="profile-line" id="profile">${profileLine()}</p>
         <div class="menu-buttons">
-          <button class="btn primary" data-go="online">Play online</button>
+          <button class="btn primary" data-go="server">${__SITES__ ? 'Play online' : 'Join server'}</button>
+          <button class="btn" data-go="online">Play with a code</button>
           <button class="btn" data-go="solo">Solo against bots</button>
           <button class="btn" data-go="sandbox">Practice sandbox</button>
           <button class="btn" data-go="progress">Progress</button>
           <div class="menu-pair"><button class="btn" data-go="wardrobe">Wardrobe</button><button class="btn" data-go="settings">Settings</button></div>
         </div>
-        <p class="menu-foot">${__SITES__ ? 'Host a casual match for up to four friends, or join with a room code. The host runs the match and must keep this tab open and visible.' : 'Online plays with people on this server: pick a room or make one and share its link.'} Solo runs bots on your own machine. The sandbox has a station for every mechanic and /bot for sparring.</p>
+        <p class="menu-foot">${__SITES__ ? 'Host a casual match for up to four friends, or join with a room code. The host runs the match and must keep this tab open and visible.' : 'Join the server and walk into the hub: keeper NPCs take you to bed-wars matches, the practice sandbox and the wardrobe. Games start on their own and bots fill the empty seats, so there is always something to play.'} Solo runs bots on your own machine. The sandbox has a station for every mechanic and /bot for sparring.</p>
       </div>
       <p class="version">v${__APP_VERSION__}${promoShown() ? ` · <a href="${freebuffUrl('menu-footer')}" target="_blank" rel="noopener">${FREEBUFF_MARK}Made with Freebuff</a>` : ''}</p>
       </div>
@@ -156,6 +194,14 @@ function menu() {
         online()
         return
       }
+      if (go === 'server') {
+        saveName(name)
+        // The server's shared hub is the front door: no menu, just walk in.
+        // Sites has no shared server, so it keeps its room-code flow.
+        if (__SITES__) online()
+        else start({ name, world: 'hub', room: 'main', fast: false }, false)
+        return
+      }
       start({ name, world: go === 'sandbox' ? 'sandbox' : 'arena', room: 'main', fast: false }, true)
     }),
   )
@@ -182,7 +228,7 @@ function online(invite?: { room: string; private: boolean; fast: boolean }) {
   const card = app.querySelector('.menu-card')!
   const fresh = randomRoomName()
   card.innerHTML = `
-    <div class="online-head"><h2>Play online</h2><button class="btn ghost" data-act="back">Back</button></div>
+    <div class="online-head"><h2>Play with a code</h2><button class="btn ghost" data-act="back">Back</button></div>
     ${invite ? `<div class="invite"><p>You were invited to room <b>${esc(invite.room)}</b>${invite.private ? ' (invite only)' : ''}.</p><button class="btn primary" data-act="invite">Join ${esc(invite.room)}</button></div>` : ''}
     <label class="field"><span>Your name</span><input id="name" maxlength="16" placeholder="Your name" value="${esc(savedName())}"></label>
     <p class="online-line" id="online"></p>
@@ -198,10 +244,18 @@ function online(invite?: { room: string; private: boolean; fast: boolean }) {
     <label class="field check"><input id="fast" type="checkbox"> <span>Fast round: the timeline runs ten times quicker</span></label>
     <p class="muted small">Typing the name of a room that exists joins it. Rounds start when two people are in; the host can start sooner with bots.</p>`
   let rooms: RoomInfo[] = []
-  const join = (room: string, options: { private?: boolean; fast?: boolean; world?: 'arena' | 'sandbox' } = {}) => {
+  const join = (room: string, options: { private?: boolean; fast?: boolean; world?: 'arena' | 'sandbox'; auto?: boolean; map?: string } = {}) => {
     const name = playerName()
     saveName(name)
-    start({ name, world: options.world ?? 'arena', room, fast: !!options.fast, private: !!options.private }, false)
+    // Keep a matchmaking room's exact key: adding or dropping `auto`/`map` would make a different room.
+    start({ name, world: options.world ?? 'arena', room, fast: !!options.fast, private: !!options.private, auto: !!options.auto, map: options.map }, false)
+  }
+  /** Join a listed room without changing its key. */
+  const joinListed = (r: RoomInfo) => {
+    const name = playerName()
+    saveName(name)
+    const t = joinTarget(r)
+    start({ name, world: t.world, room: t.room, fast: !!t.fast, private: !!t.private, auto: !!t.auto, map: t.map }, false)
   }
   const list = card.querySelector('#rooms')!
   const render = (data: RoomList | null) => {
@@ -223,7 +277,7 @@ function online(invite?: { room: string; private: boolean; fast: boolean }) {
     list.querySelectorAll<HTMLButtonElement>('[data-room]').forEach((b) =>
       b.addEventListener('click', () => {
         const r = rooms[Number(b.dataset.room)]
-        join(r.room, { fast: r.fast, world: r.world })
+        if (r) joinListed(r)
       }),
     )
   }
@@ -232,7 +286,8 @@ function online(invite?: { room: string; private: boolean; fast: boolean }) {
   card.querySelector('[data-act="invite"]')?.addEventListener('click', () => join(invite!.room, invite))
   card.querySelector('[data-act="quick"]')!.addEventListener('click', () => {
     const best = bestRoom(rooms)
-    join(best?.room ?? 'main', { fast: best?.fast })
+    if (best) joinListed(best)
+    else join('main', {})
   })
   card.querySelector('[data-act="make"]')!.addEventListener('click', () => {
     const room = cleanRoomName((card.querySelector('#room') as HTMLInputElement).value) || fresh
@@ -279,10 +334,12 @@ if (params.get('play') === '1') {
   start(
     {
       name: params.get('name') ?? (savedName() || 'Player'),
-      world: params.get('world') === 'sandbox' ? 'sandbox' : 'arena',
+      world: params.get('world') === 'sandbox' ? 'sandbox' : params.get('world') === 'hub' ? 'hub' : 'arena',
       room: params.get('room') ?? 'main',
       fast: params.get('fast') === '1',
       private: params.get('private') === '1',
+      auto: params.get('auto') === '1',
+      map: params.get('map') ?? undefined,
       hosting: params.get('host') === '1',
     },
     params.get('offline') === '1',

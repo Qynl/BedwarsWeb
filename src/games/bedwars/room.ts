@@ -23,6 +23,7 @@ import { ARMOR_ORDER, type ArmorTier, AXES, type Effect, item, JUMP_BOOST, PICKA
 import { Arsenal } from './arsenal'
 import { decodeLook, DEFAULT_LOOK, encodeLook, randomLook } from './look'
 import { arenaLayout, createArena } from './maps/arena'
+import { createHub } from './maps/hub'
 import { createSandbox } from './maps/sandbox'
 import type { MapDef, MapMeta } from './maps/types'
 import type { RoomSummary } from '../../engine/net/room'
@@ -32,6 +33,7 @@ import type { ClientMessage, DropView, EventKind, GameView, Phase, PlayerDelta, 
 import { raycastBlock } from '../../engine/raycast'
 import { rng } from '../../engine/random'
 import { toBase64 } from '../../engine/world'
+import { BRAND } from './constants'
 import {
   BASE_RADIUS,
   FORGE_EMERALD_INTERVAL,
@@ -92,6 +94,8 @@ export interface Player extends Mover {
   /** The `seq` of the last input applied; null until one arrives (and after a teleport). */
   lastSeq: number | null
   stats: { kills: number; finals: number; beds: number; deaths: number }
+  /** Kills since the last death, for streak announcements. */
+  streak: number
   lastSelf: string
   /** Sandbox dummies stand still and respawn where they were. */
   home: [number, number, number, number] | null
@@ -167,6 +171,8 @@ export class Room {
   generators: Generator[] = []
   drops: Drop[] = []
   winner: TeamId | 'draw' | null = null
+  /** Whether the current round has seen its first kill yet. */
+  private firstBlood = true
   botsEnabled: boolean
   /** Level for bots made from now on; the host changes it in the lobby. */
   botLevel: BotLevel
@@ -207,7 +213,9 @@ export class Room {
     this.botsEnabled = options.rules.bots
     this.botLevel = options.rules.botLevel
     this.mapId = options.rules.maps[0] ?? 'skyreach'
-    this.createMap = options.createMap ?? (() => (options.rules.mode === 'sandbox' ? createSandbox() : createArena(this.rules.teams, arenaLayout(this.mapId))))
+    this.createMap =
+      options.createMap ??
+      (() => (options.rules.mode === 'sandbox' ? createSandbox() : options.rules.mode === 'hub' ? createHub() : createArena(this.rules.teams, arenaLayout(this.mapId))))
     this.resetWorld()
     if (this.rules.mode === 'sandbox') this.phase = 'playing'
   }
@@ -262,6 +270,7 @@ export class Room {
       inputBudget: INPUT_BUDGET,
       lastSeq: null,
       stats: { kills: 0, finals: 0, beds: 0, deaths: 0 },
+      streak: 0,
       lastSelf: '',
       home: null,
       drawStart: null,
@@ -277,7 +286,15 @@ export class Room {
     if (this.rules.mode === 'arena') this.send(p, this.votesMessage())
     this.send(p, { t: 'lobby', botLevel: this.botLevel })
 
-    if (this.rules.mode === 'sandbox') {
+    if (this.rules.mode === 'hub') {
+      // The hub is everybody's: no teams, no kit, no round.
+      p.team = null
+      if (!brain) {
+        this.spawnInHub(p)
+        this.event(p, 'title', BRAND, 'Right-click a keeper to play. Press B for the game menu and Tab for the player list.')
+        this.event(p, 'system', 'Welcome to the network. Walk up to a keeper and right-click to play, or press B. /list shows who is here.')
+      }
+    } else if (this.rules.mode === 'sandbox') {
       p.team = brain ? p.team : 'red'
       if (!brain) this.spawn(p)
     } else if (this.phase === 'playing' && !brain && this.takeBotSeat(p)) {
@@ -348,7 +365,8 @@ export class Room {
   /** What the public room list shows; private rooms (and rooms made outside the server) are not listed. */
   summary(): RoomSummary | null {
     const p = this.params
-    if (!p || p.private) return null
+    // The hub is not a game: it never appears in a room list (it is still counted as online).
+    if (!p || p.private || p.world === 'hub') return null
     const players = this.humans().length
     // Sandbox training dummies are scenery, not seats: only real bots count.
     const bots = [...this.players.values()].filter((q) => q.brain && !q.home).length
@@ -356,8 +374,10 @@ export class Room {
       room: p.room,
       world: p.world,
       fast: p.fast,
+      auto: p.auto ?? false,
       phase: this.phase,
       map: this.map.name,
+      mapId: this.mapId,
       players,
       bots,
       capacity: this.rules.mode === 'sandbox' ? 16 : this.rules.teams.length * this.rules.teamSize,
@@ -720,6 +740,21 @@ export class Room {
   }
 
   private command(p: Player, [name, ...args]: string[]): void {
+    // The hub has its own little command set, and no round to start.
+    if (this.rules.mode === 'hub') {
+      if (name === 'help') return this.event(p, 'system', 'Hub commands: /spawn (back to the deck), /parkour (to the start), /list (who is here). Right-click a keeper to play.')
+      if (name === 'spawn' || name === 'hub' || name === 'lobby') return this.spawnInHub(p)
+      if (name === 'parkour') {
+        const start = this.map.labels.find((l) => l.text === 'PARKOUR')
+        if (start) this.teleport(p, start.x, start.y - 2.4, start.z, 0, 0)
+        return
+      }
+      if (name === 'list' || name === 'who' || name === 'online') {
+        const names = this.humans().map((q) => q.name).join(', ')
+        return this.event(p, 'system', `${this.humans().length} in the hub: ${names}`)
+      }
+      return this.event(p, 'error', 'Try /spawn, /parkour, /list or right-click a keeper.')
+    }
     if (name === 'help') return this.event(p, 'system', this.rules.cheats ? 'Commands: /give <item> [count], /tp <x> <y> <z>, /heal, /kit, /kill, /bot [n] [easy|normal|hard|expert], /nobots, /weather <storm|meteor|clear>, /start' : 'Commands: /start (host)')
     if (name === 'start') return void (p.id === this.hostId && this.phase === 'waiting' && this.beginCountdown(true))
     if (!this.rules.cheats) return this.event(p, 'error', 'Commands are off in this room.')
@@ -803,6 +838,7 @@ export class Room {
     p.effects = { speed: 0, jump: 0, invisible: 0 }
     p.health = 0
     p.stats.deaths++
+    p.streak = 0
 
     const team = p.team ? this.teams.get(p.team) : undefined
     const final = this.rules.mode === 'arena' && (!team || !team.bed)
@@ -820,6 +856,7 @@ export class Room {
     if (attacker && effect > 0) this.broadcast({ t: 'effect', effect, x: p.x, y: p.y, z: p.z })
     if (attacker) {
       attacker.stats.kills++
+      attacker.streak++
       if (final) attacker.stats.finals++
     }
     const a = attacker?.name
@@ -834,6 +871,12 @@ export class Room {
               ? a ? `${p.name} was blown up by ${a}` : `${p.name} blew up`
               : `${p.name} was slain by ${a ?? 'someone'}`
     this.broadcast({ t: 'event', kind: 'kill', text: final ? `${text}. Final kill!` : text, team: p.team ?? undefined })
+    // A little colour for the kill feed: first blood, then the big streaks.
+    if (attacker && this.firstBlood && this.rules.mode === 'arena') {
+      this.firstBlood = false
+      this.broadcastEvent('system', `First blood: ${attacker.name} drew first.`)
+    }
+    if (attacker && [3, 5, 8, 12, 20, 30].includes(attacker.streak)) this.broadcastEvent('system', `${attacker.name} is on a ${attacker.streak} kill streak!`)
 
     if (final) {
       p.eliminated = true
@@ -847,8 +890,9 @@ export class Room {
   }
 
   private spawn(p: Player): void {
+    if (this.rules.mode === 'hub') return this.spawnInHub(p)
     const base = this.map.bases.find((b) => b.team === p.team) ?? this.map.bases[0]
-    const [x, y, z, yaw] = p.home ?? base.spawn
+    const [x, y, z, yaw] = p.home ?? base?.spawn ?? this.map.lobby?.spawn ?? [0, 0, 0, 0]
     p.alive = true
     p.eliminated = false
     p.respawnAt = null
@@ -863,8 +907,26 @@ export class Room {
     this.teleport(p, x, y, z, yaw, 0)
   }
 
+  /** Puts someone on the hub's spawn deck with a clean inventory and no game rules. */
+  spawnInHub(p: Player): void {
+    const [x, y, z, yaw] = this.map.lobby?.spawn ?? (this.map.spectator as unknown as [number, number, number, number])
+    p.alive = true
+    p.eliminated = false
+    p.respawnAt = null
+    p.health = MAX_HEALTH
+    p.vx = p.vy = p.vz = 0
+    p.fallDistance = 0
+    p.hurtTicks = 0
+    p.lastAttacker = null
+    p.protectedTicks = 0
+    p.dig = null
+    p.effects = { speed: 0, jump: 0, invisible: 0 }
+    p.inventory = emptyInventory()
+    this.teleport(p, x, y, z, yaw, 0)
+  }
+
   private giveKit(p: Player): void {
-    if (p.home) return
+    if (p.home || this.rules.mode === 'hub') return
     if (countItem(p.inventory, 'wood_sword') === 0 && !p.inventory.some((s) => s && item(s.id)?.kind === 'sword')) addItem(p.inventory, 'wood_sword', 1)
     if (p.pickaxeTier >= 0 && !p.inventory.some((s) => s && PICKAXES.includes(s.id))) addItem(p.inventory, PICKAXES[p.pickaxeTier], 1)
     if (p.axeTier >= 0 && !p.inventory.some((s) => s && AXES.includes(s.id))) addItem(p.inventory, AXES[p.axeTier], 1)
@@ -894,6 +956,7 @@ export class Room {
   }
 
   private toLobby(p: Player): void {
+    if (this.rules.mode === 'hub') return this.spawnInHub(p)
     const lobby = this.map.lobby
     p.alive = true
     p.eliminated = false
@@ -1027,6 +1090,8 @@ export class Room {
     }
     this.phase = 'playing'
     this.phaseStart = this.tickCount
+    this.firstBlood = true
+    for (const p of this.players.values()) p.streak = 0
     this.timelineIndex = 0
     this.weather = null
     this.weatherUntil = 0
@@ -1069,6 +1134,7 @@ export class Room {
     for (const p of this.players.values()) {
       p.team = null
       p.stats = { kills: 0, finals: 0, beds: 0, deaths: 0 }
+      p.streak = 0
       this.send(p, { t: 'world', world, map: this.meta() })
       this.toLobby(p)
     }
@@ -1134,6 +1200,7 @@ export class Room {
     this.stepDig(p)
 
     if (p.y < this.map.killY) {
+      if (this.rules.mode === 'hub') return this.spawnInHub(p)
       if (this.phase === 'waiting' || this.phase === 'countdown') return this.toLobby(p)
       return this.die(p, 'void')
     }
@@ -1217,6 +1284,8 @@ export class Room {
   }
 
   private stepPhase(): void {
+    // The hub has no round: nothing starts, nothing ends, and nobody is eliminated.
+    if (this.rules.mode === 'hub') return
     const elapsed = this.tickCount - this.phaseStart
     if (this.bedRegenAt !== null && this.tickCount >= this.bedRegenAt) {
       this.bedRegenAt = null

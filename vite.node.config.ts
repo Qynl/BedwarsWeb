@@ -24,7 +24,8 @@ function gameServer(): Plugin {
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [gameServer()],
   define: { __SITES__: false, __APP_VERSION__: JSON.stringify(pkg.version) },
-  server: { port: 5173, strictPort: false },
+  // The sandbox preview proxies an arbitrary host; allow it (and LAN play) through Vite's host check.
+  server: { host: '0.0.0.0', port: 5173, strictPort: false, allowedHosts: true },
   // The chunk mesher runs in a module worker (src/engine/render/mesh-worker.ts).
   worker: { format: 'es' },
   // Node assets stay separate from the Sites manifest, even when both builds run.
