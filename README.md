@@ -56,6 +56,7 @@ bun run build          # dist/client + dist/buffcraft/index.js, for Freebuff Sit
 bun run build:node     # dist/node-client + dist/server/main.js, for Node/Electron
 bun run start          # serve the build on :3000 (see "Hosting for friends" below)
 bun run minecraft      # Java Edition gateway on :25565 (see "Real Minecraft" below)
+bun run share          # website + Java gateway + a free public relay, one command
 ```
 
 Checks:
@@ -262,13 +263,82 @@ shop is available from Java chat: `/shop` lists offer ids, `/buy wool` buys,
 and `/upgrade protection` buys a team upgrade when you are at the keeper.
 `/tp x y z` and the other sandbox commands work where the room allows them.
 
-It is intentionally a one-version, offline-mode bridge, and the listener must
-be reachable over TCP. The hosted Sites/Cloud preview only forwards HTTP and
-WebSocket traffic, so for a friend outside your machine run the Node server and
-the gateway on a host with TCP `25565` exposed (or use a LAN/VPN). The Java
-gateway is not a way to proxy Hypixel or any other remote server; it hosts
-SKYSHARD's own rooms. Final-death spectator flow and the shop GUI are simpler
-than in the browser; the command fallbacks above cover the shop.
+It is intentionally a one-version, offline-mode bridge. The hosted Sites/Cloud
+preview and Vercel only forward HTTP and WebSocket traffic and a browser cannot
+accept raw TCP, so those deployments cannot be a Minecraft server by
+themselves. The Java gateway is not a way to proxy Hypixel or any other remote
+server; it hosts SKYSHARD's own rooms. Final-death spectator flow and the shop
+GUI are simpler than in the browser; the command fallbacks above cover the
+shop.
+
+### One command: website + Java server + free public address
+
+A static website cannot accept a Minecraft connection by itself: the client
+speaks raw TCP and browsers/HTTP hosts cannot listen on a TCP port. The free
+path here is to run the website's Node/Bun process as the listener and use a
+free TCP relay for the public address. `bun run share` does exactly that in one
+command:
+
+```sh
+bun run share
+```
+
+It prints:
+
+```text
+Website:       http://localhost:3000
+Minecraft:     localhost:25565
+Public Minecraft: quiet-river.e4mc.link
+```
+
+Friends paste the public domain into **Multiplayer → Direct Connection** with a
+vanilla Java 1.21.8 client. There is no account, no port forwarding and no
+separate Minecraft host: e4mc is a free public TCP relay, and the game itself
+still runs in this process. Only the host runs the command.
+
+The relay helper needs **Java 11+** (the Minecraft launcher normally includes
+one; `bun run share` also looks inside the launcher's runtime folder). Without
+Java, `bun run share` still starts the website and local/LAN Minecraft and
+explains what is missing. It downloads the MIT-licensed `e4mcbiat` helper once
+into `.cache/`; set `E4MC_JAR=/path/to.jar` to reuse one, `JAVA=/path/to/java`
+to pick a runtime, or `MC_TUNNEL_CMD='...'` to use your own tunnel.
+`bun run share --no-public` keeps everything local.
+
+```sh
+PORT=3000 MC_PORT=25565 bun run share          # pick ports
+MC_PUBLIC_URL=my-host:25565 bun run share      # advertise your own tunnel
+bun run share --no-public                      # browser + LAN only
+```
+
+| Where it runs | Browser game | Java client | Public without port forwarding |
+| --- | --- | --- | --- |
+| Freebuff Sites / Vercel / static host | yes | no | no |
+| `npm start` on Node | yes | localhost/LAN | only with a tunnel |
+| `bun run share` on a PC or free VM | yes | yes | yes, through e4mc |
+
+A container with Java and both ports exposed is also included:
+
+```sh
+docker build -f Dockerfile.share -t skyshard-share .
+docker run --rm -p 3000:3000 -p 25565:25565 skyshard-share
+```
+
+On a host that only gives you one HTTP port (some free web services), the
+website port is enough for the e4mc relay because the tunnel is outbound; the
+provider must allow outbound UDP/HTTPS for e4mc. A small free VM is the least
+surprising place to keep it running.
+
+This is a session relay, not a 24/7 host: the tab/process must stay running,
+the address changes when the relay reconnects, and e4mc is a third-party free
+service. For an always-on free server, run the Node host on a free VM (or any
+machine that can listen on TCP) with `MC_PORT=25565` and expose that port, or
+keep `bun run share` running. Either way the public listener is offline-mode,
+so anyone with the address can join under any name; only share it with people
+you trust.
+
+The e4mc domain routes to the local Minecraft port; the website menu shows the
+address automatically when a server was started by `bun run share` (or when a
+separate gateway is running and `MC_PORT` is set).
 
 The translation lives in `src/games/bedwars/minecraft.ts`; the CLI is
 `scripts/minecraft.ts`; `tests/minecraft.test.ts` logs in with a protocol

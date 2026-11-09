@@ -22,7 +22,8 @@
     "dev:node": "vite --config vite.node.config.ts",
     "build:node": "vite build --config vite.node.config.ts && vite build --config vite.node.config.ts --ssr src/server/main.ts --outDir dist/server",
     "smoke:sites": "node scripts/smoke-sites.mjs",
-    "minecraft": "bun scripts/minecraft.ts"
+    "minecraft": "bun scripts/minecraft.ts",
+    "share": "bun scripts/share.ts"
   },
   "dependencies": {
     "@freebuff/auth": "0.1.0",

@@ -14,5 +14,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client", "bun"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vite.node.config.ts", "freebuff-realtime/*.d.ts"]
+  "include": ["src", "tests", "scripts/*.ts", "vite.config.ts", "vite.node.config.ts", "freebuff-realtime/*.d.ts"]
 }

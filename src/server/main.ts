@@ -64,6 +64,20 @@ function staticHandler(staticDir: string, listRooms: RoomLister) {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end(roomListBody(rooms, online))
       return
     }
+    // Advertises the optional Java listener to the menu. Only public, non-secret
+    // values; a static/Sites deployment answers 404 and the menu hides the line.
+    if (path === '/api/minecraft') {
+      const port = Number(process.env.MC_PORT)
+      const enabled = Number.isInteger(port) && port > 0 && port <= 65535
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end(JSON.stringify({
+        enabled,
+        host: process.env.MC_HOST ?? '127.0.0.1',
+        port: enabled ? port : null,
+        version: process.env.MC_VERSION ?? '1.21.8',
+        publicAddress: process.env.MC_PUBLIC_URL ?? null,
+      }))
+      return
+    }
     // For uptime checks and process managers.
     if (path === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end(JSON.stringify({ ok: true, version: VERSION }))

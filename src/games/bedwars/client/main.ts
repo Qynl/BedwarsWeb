@@ -141,6 +141,25 @@ function poll(anchor: Element, update: (list: RoomList | null) => void) {
   void run()
 }
 
+/** Shows the Java listener's address when this server has one (bun run share). */
+function showMinecraftLine(attempt = 0) {
+  if (__SITES__) return
+  void fetch('/api/minecraft', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((info: { enabled?: boolean; host?: string; port?: number | null; version?: string; publicAddress?: string | null } | null) => {
+      const line = document.getElementById('java-line')
+      if (!line || !info?.enabled || !info.port) return
+      const local = `${info.host === '0.0.0.0' ? 'localhost' : info.host ?? 'localhost'}:${info.port}`
+      const address = info.publicAddress || local
+      line.hidden = false
+      line.innerHTML = `Minecraft Java ${esc(info.version ?? '1.21.8')}: <b>${esc(address)}</b>${info.publicAddress ? ` <span class="muted">(public)</span> · local ${esc(local)}` : ''} · Multiplayer → Direct Connection <button class="btn ghost" data-copy-mc>Copy</button>`
+      line.querySelector<HTMLButtonElement>('[data-copy-mc]')?.addEventListener('click', () => void navigator.clipboard?.writeText(address))
+      // The free relay can take a few seconds to hand out a domain; refresh until it does.
+      if (!info.publicAddress && attempt < 5) setTimeout(() => showMinecraftLine(attempt + 1), 2000)
+    })
+    .catch(() => {})
+}
+
 /** Start screen: name, modes and settings; Play online opens the room list. URL parameters skip it (?world=sandbox&offline=1&play=1). */
 function menu() {
   app.innerHTML = `
@@ -164,10 +183,12 @@ function menu() {
           <div class="menu-pair"><button class="btn" data-go="wardrobe">Wardrobe</button><button class="btn" data-go="settings">Settings</button></div>
         </div>
         <p class="menu-foot">${__SITES__ ? 'Host a casual match for up to four friends, or join with a room code. The host runs the match and must keep this tab open and visible.' : 'Join the server and walk into the hub: keeper NPCs take you to bed-wars matches, the practice sandbox and the wardrobe. Games start on their own and bots fill the empty seats, so there is always something to play.'} Solo runs bots on your own machine. The sandbox has a station for every mechanic and /bot for sparring.</p>
+        <p class="menu-foot mc-line" id="java-line" hidden></p>
       </div>
       <p class="version">v${__APP_VERSION__}${promoShown() ? ` · <a href="${freebuffUrl('menu-footer')}" target="_blank" rel="noopener">${FREEBUFF_MARK}Made with Freebuff</a>` : ''}</p>
       </div>
     </div>`
+  showMinecraftLine()
   const card = app.querySelector('.menu-card')!
   poll(card, (list) => {
     const line = document.getElementById('online')

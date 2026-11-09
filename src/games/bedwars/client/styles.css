@@ -306,6 +306,7 @@ input[type=range]::-moz-range-thumb { width: 10px; height: 20px; background: var
 .fps { display: none; position: absolute; left: 8px; top: 6px; font-size: 15px; }
 .fps.show { display: block; }
 .menu-foot { margin: 8px 0 0; color: var(--window-dim); font-size: 13px; }
+.mc-line .btn { height: 26px; padding: 0 8px; font-size: 12px; vertical-align: middle; }
 .version { margin: -8px 0 0; color: #bdbdbd; font-size: 13px; text-shadow: var(--shadow); }
 @media (max-width: 640px) {
   .setting { grid-template-columns: 1fr; }
