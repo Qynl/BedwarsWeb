@@ -69,6 +69,23 @@ export function joinTarget(r: RoomInfo): MatchTarget {
 export const ARENA_IDS = ['skyreach', 'lanterns', 'dunes', 'frostpeak', 'ruins'] as const
 /** Their display names, for the hub's map picker and the server list. */
 export const ARENA_NAMES: Record<string, string> = { skyreach: 'Skyreach', lanterns: 'Lanterns', dunes: 'Dunes', frostpeak: 'Frostpeak', ruins: 'Ruins' }
+/** A tiny generated thumbnail: sky, ground, and where the four bases sit (percentages). */
+export interface ArenaLook {
+  sky: string
+  ground: string
+  accent: string
+  bases: [number, number][]
+}
+
+/** Colours and footprints for the map picker's previews, kept with the layouts in maps/arena.ts. */
+export const ARENA_LOOKS: Record<string, ArenaLook> = {
+  skyreach: { sky: '#8ec5ff', ground: '#6a9a4f', accent: '#d9e8a0', bases: [[50, 18], [84, 50], [50, 84], [16, 50]] },
+  lanterns: { sky: '#e9a77c', ground: '#7a6a4a', accent: '#f4d28a', bases: [[22, 22], [78, 22], [78, 78], [22, 78]] },
+  dunes: { sky: '#f1d6a0', ground: '#c9a35c', accent: '#ffe6a8', bases: [[50, 18], [82, 50], [50, 82], [18, 50]] },
+  frostpeak: { sky: '#d4e5f2', ground: '#c8dce8', accent: '#ffffff', bases: [[24, 24], [76, 24], [76, 76], [24, 76]] },
+  ruins: { sky: '#a9c0d0', ground: '#64745a', accent: '#a8b890', bases: [[50, 15], [85, 50], [50, 85], [15, 50]] },
+}
+
 /** A one-line look for each map, so picking one is more than a name. */
 export const ARENA_NOTES: Record<string, string> = {
   skyreach: 'Forest islands on a four-team cross',

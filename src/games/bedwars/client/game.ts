@@ -417,6 +417,7 @@ export class Game {
       }
       case 'gens':
         this.gens.update(m.list)
+        this.hud.setGenerators(this.gens.nextDrops)
         break
       case 'effect':
         this.killEffect(m.effect, m.x, m.y, m.z)
@@ -448,6 +449,7 @@ export class Game {
     this.scene.add(this.chunks.group)
     this.decor = createMapDecor(map.npcs, map.labels.filter((l) => l.text !== 'Diamond' && l.text !== 'Emerald'), this.layout, this.atlas.texture)
     this.gens.load(map.generators)
+    this.hud.setGenerators({})
     this.scene.add(this.decor)
     const top = map.bases[0]?.spawn[1] ?? 40
     this.sky = createSky(this.env, top + 45, [this.world.sx / 2, this.world.sz / 2])

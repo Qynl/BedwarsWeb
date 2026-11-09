@@ -383,11 +383,13 @@ describe('shop and upgrades', () => {
   })
 
   test('team upgrades cost diamonds at the upgrades keeper', () => {
-    const { room, a } = duel()
+    const { room, a, b } = duel()
     const npc = room.map.npcs.find((n) => n.kind === 'upgrades' && n.team === 'red')!
     a.put(npc.x + 1, npc.y, npc.z)
     addItem(a.p.inventory, 'diamond', 6)
     a.send({ t: 'upgrade', id: 'protection' })
+    // The whole match hears about it, not just the buying team.
+    expect(b.events('system').at(-1)).toBe('Red bought Reinforced armour 1')
     a.send({ t: 'upgrade', id: 'protection' })
     expect(room.teams.get('red')!.upgrades.protection).toBe(2)
     expect(countItem(a.p.inventory, 'diamond')).toBe(0)

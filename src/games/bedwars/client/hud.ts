@@ -5,11 +5,12 @@ import { countItem, HOTBAR, INVENTORY_SIZE, type Slot } from '../../../engine/in
 import { ARMOR_ORDER, AXES, item, PICKAXES } from '../items'
 import type { ChestKind, ChestRef, ServerMessage } from '../protocol'
 import type { Game } from './game'
+import type { GeneratorTimers } from './generators'
 import { keyLabel, type Action } from './settings'
 import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
 import { remixButton, summaryLine } from './promo'
-import { ARENA_IDS, ARENA_NAMES, ARENA_NOTES, fetchRooms, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
+import { ARENA_IDS, ARENA_LOOKS, ARENA_NAMES, ARENA_NOTES, fetchRooms, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
 
 const RESOURCE_COLORS: Record<string, string> = { iron: '#e8e8e8', gold: '#f2cf4a', diamond: '#5fe0d8', emerald: '#38d36b' }
 
@@ -48,6 +49,7 @@ export class Hud {
   private center = el('div', 'center-note')
   private lobby = el('div', 'lobby panel')
   private scoreboard = el('div', 'scoreboard panel')
+  private nextDrops: GeneratorTimers = {}
   private debug = el('pre', 'debug')
   private modal = el('div', 'modal')
   private help = el('div', 'help')
@@ -67,7 +69,7 @@ export class Hud {
   private hubList: RoomList | null = null
   private hubFetchedAt = 0
   private hubRefreshing = false
-  private shopTab: OfferCategory = 'blocks'
+  private shopTab: OfferCategory | 'quick' = 'quick'
   private pickedSlot: number | null = null
   /** The chest the server has open, and the slot picked to swap. */
   private chest: { kind: ChestKind; slots: (Slot | null)[] } | null = null
@@ -247,7 +249,7 @@ export class Hud {
     this.summary.innerHTML = `<div class="window-head"><h2>${title}</h2><button class="btn ghost" data-close>Close</button></div>
       <table><thead><tr><th>Player</th><th>Finals</th><th>Kills</th><th>Beds</th><th>Deaths</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="muted small">The next round starts in ${Math.round(m.lobbyIn / TPS)} seconds.${online ? ' Or go straight back to the hub for another round.' : ''}</p>
-      ${online ? '<div class="row"><button class="btn primary" data-again>Find a new game</button><button class="btn" data-hub>Return to hub</button></div>' : ''}
+      ${online ? '<div class="row"><button class="btn primary" data-again>Play Again</button><button class="btn" data-hub>Return to Lobby</button></div>' : ''}
       ${summaryLine()}`
     this.summary.classList.add('show')
     this.summary.querySelector('[data-again]')?.addEventListener('click', () => {
@@ -354,6 +356,11 @@ export class Hud {
   setScoreboard(show: boolean) {
     this.scoreboard.classList.toggle('show', show)
     if (show) this.renderScoreboard()
+  }
+
+  /** Live countdowns from the gem generators, for the sidebar. */
+  setGenerators(timers: GeneratorTimers) {
+    this.nextDrops = timers
   }
 
   closeModal() {
@@ -542,19 +549,30 @@ export class Hud {
       }
       return
     }
-    const rows: string[] = [`<div class="brand">${BRAND}</div>`]
-    if (view.mode === 'arena') rows.push(`<div class="map-line">Map: <b>${escapeHtml(g.map?.name ?? 'Arena')}</b></div>`)
+    const rows: string[] = [`<div class="brand">${view.mode === 'arena' ? 'BED WARS' : BRAND}</div>`]
+    if (view.mode === 'arena') {
+      const size = view.teamSize ?? 1
+      const mode = size <= 1 ? 'Solos' : size === 2 ? 'Doubles' : `${size}s`
+      rows.push(`<div class="brand-sub">${BRAND} NETWORK</div>`)
+      rows.push(`<div class="map-line">Map: <b>${escapeHtml(g.map?.name ?? 'Arena')}</b> <span class="mode">${mode}</span></div>`)
+    }
     if (view.mode === 'sandbox') rows.push('<div class="line muted">Sandbox: try every mechanic. /help for commands.</div>')
     else if (view.phase === 'waiting') rows.push('<div class="line muted">Starting soon</div>')
     else if (view.phase === 'countdown') rows.push(`<div class="line">Starting in <b>${Math.ceil(g.clock() / TPS)}</b></div>`)
     else if (view.phase === 'playing') {
       rows.push(`<div class="line muted">Time <b>${clock(g.clock())}</b></div>`)
       if (view.next) rows.push(`<div class="line">${view.next.label} in <b>${clock(view.next.in - (g.clock() - view.clock))}</b></div>`)
+      for (const kind of ['diamond', 'emerald'] as const) {
+        const next = this.nextDrops[kind]
+        if (!next) continue
+        const roman = ['I', 'II', 'III'][next.tier - 1] ?? next.tier
+        rows.push(`<div class="gen-line ${kind}"><i></i>${kind === 'diamond' ? 'Diamond' : 'Emerald'} ${roman}<b>${clock(next.seconds * TPS)}</b></div>`)
+      }
     } else rows.push(`<div class="line">${view.winner === 'draw' ? 'Draw' : view.winner ? `${TEAM_NAMES[view.winner]} wins` : 'Round over'}</div>`)
-    if (view.mode === 'arena' && view.phase !== 'waiting' && view.phase !== 'countdown') {
+    if (view.mode === 'arena') {
       rows.push('<div class="teams">')
       for (const t of view.teams) {
-        const state = t.eliminated ? '<span class="x">out</span>' : t.bed ? '<span class="ok">core</span>' : `<span class="warn">${t.alive}</span>`
+        const state = t.eliminated ? '<span class="x">OUT</span>' : `<span class="bed-mark ${t.bed ? 'on' : 'off'}">${t.bed ? '✓' : '✗'}</span> ${t.alive}`
         rows.push(`<div class="team-row${t.team === self.team ? ' mine' : ''}"><i style="background:${TEAM_COLORS[t.team]}"></i>${TEAM_NAMES[t.team]}${t.team === self.team ? ' (you)' : ''}<span class="right">${state}</span></div>`)
       }
       rows.push('</div>')
@@ -645,21 +663,25 @@ export class Hud {
     }
     const view = g.gameView
     const teams = view?.teams ?? []
-    const rows = teams
-      .map(
-        (t) =>
-          `<div class="score-row team${t.eliminated ? ' out' : ''}"><i style="background:${TEAM_COLORS[t.team]}"></i><span class="name">${TEAM_NAMES[t.team]}</span><span class="right"><span class="bed-mark ${t.bed ? 'on' : 'off'}">${t.bed ? '✓' : '✗'}</span> ${t.alive}</span></div>`,
-      )
-      .join('')
-    const self = g.self
-    const stats = self?.stats
     const phase = view?.phase === 'ended' ? 'Game over' : view?.phase === 'playing' ? 'In progress' : 'Starting'
-    const resources = self ? ['iron', 'gold', 'diamond', 'emerald'].map((r) => `<span class="res"><i style="background:${RESOURCE_COLORS[r]}"></i>${countItem(self.inventory, r)}</span>`).join('') : ''
+    const size = view?.teamSize ?? 1
+    const mode = !view ? 'Bed Wars' : size <= 1 ? 'Solos' : size === 2 ? 'Doubles' : `${size}s`
+    const table: string[] = []
+    for (const t of teams) {
+      const members = [...g.views].filter((p) => p.team === t.team).sort((a, b) => Number(a.bot) - Number(b.bot) || a.name.localeCompare(b.name))
+      table.push(
+        `<tr class="team-head${t.eliminated ? ' out' : ''}"><td colspan="5"><i style="background:${TEAM_COLORS[t.team]}"></i>${TEAM_NAMES[t.team]}<span class="team-state"><span class="bed-mark ${t.bed ? 'on' : 'off'}">${t.bed ? '✓' : '✗'}</span>${t.eliminated ? 'OUT' : `${t.alive}/${t.players}`}</span></td></tr>`,
+      )
+      for (const p of members) {
+        const st = p.stats ?? { kills: 0, finals: 0, beds: 0, deaths: 0 }
+        table.push(
+          `<tr class="${p.alive ? '' : 'dead'}"><td class="player-name">${escapeHtml(p.name)}${p.id === g.myId ? ' (you)' : ''}${p.bot ? ' <span class="tag">BOT</span>' : ''}</td><td>${st.kills}</td><td>${st.finals}</td><td>${st.beds}</td><td>${st.deaths}</td></tr>`,
+        )
+      }
+    }
     this.scoreboard.innerHTML = `<div class="score-head"><b>BED WARS</b><span>${phase}</span></div>
-      <div class="score-map">Map: ${escapeHtml(g.map?.name ?? 'Arena')}</div>
-      <div class="score-sep"></div>${rows}<div class="score-sep"></div>
-      <div class="score-stat">Kills <b>${stats?.kills ?? 0}</b> · Finals <b>${stats?.finals ?? 0}</b> · Beds <b>${stats?.beds ?? 0}</b></div>
-      <div class="score-res">${resources}</div>`
+      <div class="score-map">Map: ${escapeHtml(g.map?.name ?? 'Arena')} <span class="mode">${mode}</span></div>
+      <table class="player-table"><thead><tr><th>Player</th><th>K</th><th>F</th><th>B</th><th>D</th></tr></thead><tbody>${table.join('')}</tbody></table>`
   }
 
   // Modals -------------------------------------------------------------------
@@ -699,21 +721,20 @@ export class Hud {
 
   private renderShop() {
     const self = this.game.self!
-    const team = self.team ?? 'red'
-    const tabs: [OfferCategory, string][] = [['blocks', 'Blocks'], ['melee', 'Melee'], ['armor', 'Armour'], ['tools', 'Tools'], ['ranged', 'Ranged'], ['utility', 'Utility'], ['potions', 'Potions']]
-    const offers = OFFERS.filter((o) => o.category === this.shopTab)
+    const tabs: [OfferCategory | 'quick', string][] = [['quick', 'Quick Buy'], ['blocks', 'Blocks'], ['melee', 'Melee'], ['armor', 'Armour'], ['tools', 'Tools'], ['ranged', 'Ranged'], ['utility', 'Utility'], ['potions', 'Potions']]
+    const offers = this.shopTab === 'quick' ? OFFERS.filter((o) => o.quick) : OFFERS.filter((o) => o.category === this.shopTab)
     const cards = offers.map((o) => this.offerCard(o)).join('')
-    this.modal.innerHTML = `<div class="window panel">
+    this.modal.innerHTML = `<div class="window panel shop-window">
       <div class="window-head"><h2>Item shop</h2><button class="btn ghost" data-close>Close</button></div>
       <div class="tabs">${tabs.map(([id, label]) => `<button class="tab${id === this.shopTab ? ' on' : ''}" data-tab="${id}">${label}</button>`).join('')}</div>
+      <p class="muted small shop-hint">${this.shopTab === 'quick' ? 'Your favourite buys, one click away. Every item also has its own category.' : 'Click an item to buy it. Resources come from your team forge and the islands.'}</p>
       <div class="offers">${cards}</div>
       <div class="wallet">${['iron', 'gold', 'diamond', 'emerald'].map((r) => `<span class="res"><i style="background:${RESOURCE_COLORS[r]}"></i>${countItem(self.inventory, r)} ${r}</span>`).join('')}</div>
     </div>`
-    void team
     this.modal.querySelector('[data-close]')!.addEventListener('click', () => this.closeModal())
     this.modal.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) =>
       b.addEventListener('click', () => {
-        this.shopTab = b.dataset.tab as OfferCategory
+        this.shopTab = b.dataset.tab as OfferCategory | 'quick'
         this.renderModal()
       }),
     )
@@ -740,11 +761,16 @@ export class Hud {
       cost = TOOL_TIER_COST[Math.min(3, tier + 1)]
     }
     if (o.give.kind === 'armor') owned = ARMOR_ORDER.indexOf(o.give.tier) <= ARMOR_ORDER.indexOf(self.armor)
+    if (o.give.kind === 'sword') {
+      const want = item(o.give.item)?.tier ?? 0
+      const best = self.inventory.reduce((n, s) => (s && item(s.id)?.kind === 'sword' ? Math.max(n, item(s.id)?.tier ?? 0) : n), 0)
+      owned = best >= want
+    }
     if (o.give.kind === 'shears') owned = countItem(self.inventory, 'shears') > 0
     const affordable = cost.every((c) => countItem(self.inventory, c.resource) >= c.amount)
     const price = cost.map((c) => `<span style="color:${RESOURCE_COLORS[c.resource]}">${c.amount} ${c.resource}</span>`).join(' ')
     return `<button class="offer${affordable && !owned ? '' : ' dim'}" data-offer="${o.id}"${owned ? ' disabled' : ''}>
-      <img src="${this.game.icons.url(icon, self.team ?? 'red')}" alt=""><span class="offer-name">${name}</span><span class="price">${owned ? 'Owned' : price}</span></button>`
+      <img src="${this.game.icons.url(icon, self.team ?? 'red')}" alt=""><span class="offer-name">${name}</span><span class="desc">${o.description}</span><span class="price">${owned ? 'Owned' : price}</span></button>`
   }
 
   private renderUpgrades() {
@@ -767,18 +793,26 @@ export class Hud {
     this.modal.querySelectorAll<HTMLButtonElement>('[data-upgrade]').forEach((b) => b.addEventListener('click', () => this.game.send({ t: 'upgrade', id: b.dataset.upgrade as never })))
   }
 
+  private mapPreview(id: string): string {
+    const look = ARENA_LOOKS[id]
+    if (!look) return '<span class="map-preview random-preview"><b>?</b></span>'
+    const teams = ['red', 'blue', 'green', 'yellow'] as const
+    const bases = look.bases.map(([x, y], i) => `<i class="map-base" style="left:${x}%;top:${y}%;background:${TEAM_COLORS[teams[i]]}"></i>`).join('')
+    return `<span class="map-preview" style="--sky:${look.sky};--ground:${look.ground};--accent:${look.accent}"><i class="map-mid"></i>${bases}</span>`
+  }
+
   private renderMaps() {
     const rooms = this.hubList?.rooms.filter((r) => r.world === 'arena') ?? []
     const playing = (id: string) => rooms.filter((r) => r.mapId === id).reduce((n, r) => n + r.players + r.bots, 0)
     const total = rooms.reduce((n, r) => n + r.players + r.bots, 0)
     const cards = ARENA_IDS.map(
       (id) =>
-        `<button class="map-card" data-map="${id}"><span class="map-face"><b>${escapeHtml(ARENA_NAMES[id])}</b><small>${escapeHtml(ARENA_NOTES[id] ?? '')}</small></span><span class="map-meta">${playing(id)} playing</span></button>`,
+        `<button class="map-card" data-map="${id}">${this.mapPreview(id)}<span class="map-face"><b>${escapeHtml(ARENA_NAMES[id])}</b><small>${escapeHtml(ARENA_NOTES[id] ?? '')}</small></span><span class="map-meta">${playing(id)} playing</span></button>`,
     ).join('')
-    this.modal.innerHTML = `<div class="window panel wide">
+    this.modal.innerHTML = `<div class="window panel wide map-window">
       <div class="window-head"><h2>Choose a map</h2><button class="btn ghost" data-close>Close</button></div>
       <p class="muted small">Pick the arena you want, or let the server put you in the fullest queue. The map is shown on the scoreboard once you are in.</p>
-      <button class="map-card random" data-map=""><span class="map-face"><b>Random map</b><small>The quickest queue, any arena</small></span><span class="map-meta">${total} playing</span></button>
+      <button class="map-card random" data-map=""><span class="map-preview random-preview"><b>?</b></span><span class="map-face"><b>Random map</b><small>The quickest queue, any arena</small></span><span class="map-meta">${total} playing</span></button>
       <div class="map-picker">${cards}</div>
       <div class="gateway-row"><button class="btn" data-close>Cancel</button><button class="btn" data-refresh>Refresh</button></div>
     </div>`

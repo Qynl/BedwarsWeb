@@ -18,7 +18,7 @@ import { TEAM_COLORS, type TeamId } from '../blocks'
 import { item, placedBlock } from '../items'
 import type { AtlasLayout } from '../../../engine/render/atlas-layout'
 import { blockCube } from '../../../engine/render/entities'
-import { itemModel } from './item-models'
+import { itemModel, swordModel } from './item-models'
 import { setBoxUV } from './avatar'
 
 /** The first-person arm and held item, drawn in its own scene over the world. */
@@ -133,7 +133,7 @@ export class ViewModel {
       m.rotation.set(0.1, 0.7, 0)
       this.held = m
     } else {
-      const model = itemModel(def.id)
+      const model = def.kind === 'sword' ? (swordModel(def.id) ?? itemModel(def.id)) : itemModel(def.id)
       if (!model) return
       const g = model.group
       if (def.kind === 'shield') {
@@ -141,12 +141,11 @@ export class ViewModel {
         g.position.set(-0.01, 0.1, -0.02)
         g.rotation.set(0.05, Math.PI / 2 - 0.15, 0)
       } else if (def.kind === 'sword') {
-        // Handle at the group origin, so the blade sweeps up and across the view.
-        // A smaller scale keeps the tip near the crosshair instead of filling the screen,
-        // and the flatter turn shows the blade's face rather than its edge.
+        // A real blade points up out of the grip; turn it 45° across the view so the
+        // tip sits near the crosshair and the guard stays in the hand.
         g.scale.setScalar(0.026)
-        g.position.set(-0.03, 0.07, -0.1)
-        g.rotation.set(0.12, 0.42, Math.PI / 2 + 0.26)
+        g.position.set(-0.02, 0.03, -0.08)
+        g.rotation.set(0.08, 0.5, Math.PI / 4 - 0.04)
       } else if (def.kind === 'tool') {
         g.scale.setScalar(0.026)
         g.position.set(-0.03, 0.06, -0.1)

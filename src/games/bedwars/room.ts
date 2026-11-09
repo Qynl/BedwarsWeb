@@ -699,8 +699,8 @@ export class Room {
         addItem(p.inventory, give.item, give.count)
         break
       case 'sword':
-        if (countItem(p.inventory, 'wood_sword') > 0) replaceItem(p.inventory, (id) => id === 'wood_sword', give.item)
-        else addItem(p.inventory, give.item, 1)
+        // Upgrading replaces any sword already carried, never leaves two behind.
+        replaceItem(p.inventory, (id) => item(id)?.kind === 'sword', give.item)
         break
       case 'armor':
         p.armor = give.tier
@@ -730,8 +730,8 @@ export class Room {
     const cost = def.levels[level]
     if (!removeItem(p.inventory, 'diamond', cost)) return this.event(p, 'error', `You need ${cost} diamonds.`)
     team.upgrades[id] = level + 1
-    for (const q of this.players.values())
-      if (q.team === team.team) this.event(q, 'system', `${p.name} bought ${def.name}${def.levels.length > 1 ? ` ${level + 1}` : ''}`)
+    // Like the network: a team upgrade is announced to the whole match, not just the buyers.
+    this.broadcast({ t: 'event', kind: 'system', text: `${TEAM_NAMES[team.team]} bought ${def.name}${def.levels.length > 1 ? ` ${level + 1}` : ''}`, team: team.team })
   }
 
   // Chests -----------------------------------------------------------------
@@ -1586,6 +1586,7 @@ export class Room {
       dig: p.dig ? [p.dig.x, p.dig.y, p.dig.z, Math.round(p.dig.progress * 20) / 20] : null,
       invisible: p.effects.invisible > this.tickCount,
       look: p.look,
+      stats: { ...p.stats },
     }
   }
 
@@ -1595,6 +1596,7 @@ export class Room {
     return {
       phase: this.phase,
       mode: this.rules.mode,
+      teamSize: this.rules.teamSize,
       clock: this.phase === 'countdown' ? Math.max(0, this.rules.countdownTicks - elapsed) : elapsed,
       clockTick: this.tickCount,
       next: next ? { label: next.label, in: next.at - elapsed } : null,

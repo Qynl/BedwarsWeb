@@ -76,6 +76,25 @@ describe('team and ender chests', () => {
     expect(a.last('chest')?.slots[1]).toBeNull()
   })
 
+  test('a teammate watching the team chest sees changes live', () => {
+    const room = arena({ teamSize: 2 })
+    const a = new TestClient(room, 'Ash')
+    const b = new TestClient(room, 'Bea')
+    const c = new TestClient(room, 'Cyd')
+    a.send({ t: 'team', team: 'red' })
+    c.send({ t: 'team', team: 'red' })
+    b.send({ t: 'team', team: 'blue' })
+    ticks(room, 25)
+    const chest = spot(room, 'team', 'red')
+    standAt(a, chest)
+    standAt(c, chest)
+    a.send({ t: 'chest', x: chest.x, y: chest.y, z: chest.z })
+    c.send({ t: 'chest', x: chest.x, y: chest.y, z: chest.z })
+    addItem(a.p.inventory, 'emerald', 1)
+    a.send({ t: 'chestSwap', kind: 'team', a: { side: 'inventory', index: held(a, 'emerald') }, b: { side: 'chest', index: 6 } })
+    expect(c.last('chest')?.slots[6]).toEqual({ id: 'emerald', count: 1 })
+  })
+
   test('another team cannot open your team chest', () => {
     const { room, a, b } = duel()
     const red = spot(room, 'team', 'red')

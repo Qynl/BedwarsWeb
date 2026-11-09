@@ -125,7 +125,7 @@ two keys of your choice. The defaults:
 | Inventory | E | click two slots to swap them |
 | Nearest shop | B | in the hub, opens the map picker; in a match, the nearest shop |
 | Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands (`/team red`) |
-| Player list | Tab | |
+| Player list | Tab | full scoreboard: map, teams, beds and every player's kills, finals, beds and deaths |
 | Debug | F3 | position, speed, target, frame rate |
 | Pause, menus | Esc | the pause card anywhere; before a round a one-line start strip stays at the top |
 
@@ -257,6 +257,22 @@ New blocks for the themes (sand, sandstone, snow, ice, cobblestone, stone
 bricks, woods, quartz, terracotta, lanterns with `lightLevel`, team-stained
 glass and more) are map blocks only; each has its own pattern painted in
 `render/textures.ts`. The game uses 68 of the 128 block ids a cell can hold.
+
+### Scoreboard, tab list and shop
+
+The right-hand panel is the in-game scoreboard, always on: BED WARS, the map
+name, the mode (Solos, Doubles...), the next event and timer, live diamond and
+emerald spawn countdowns, each team's bed mark and living players, then your
+resources and round score. Hold Tab for the full player table, grouped by team
+with kills, finals, beds and deaths. Team upgrades are announced to the whole
+match, and the end screen offers Play Again or Return to Lobby.
+
+The item shop starts on **Quick Buy**, a Hypixel-style page of the most useful
+purchases (`wool`, a sword, armour, a golden apple, a fireball, a pickaxe, a
+potion and a bridge egg); every item also has its own category and a one-line
+description of what it does. The map picker draws a small generated thumbnail
+of each arena's sky, ground and four bases, with the number of people playing
+it.
 
 ### Chests
 
