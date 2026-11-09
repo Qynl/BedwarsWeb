@@ -108,8 +108,11 @@ export class RealClient {
       const tunnel = await openTunnel(host, port, proxy)
       if (this.disposed) { tunnel.close(); return }
       this.tunnel = tunnel
-      tunnel.onData = (bytes) => this.receive(bytes)
-      tunnel.onClose = (reason) => this.fail(reason)
+      tunnel.setHandlers(
+        (bytes) => { if (this.tunnel === tunnel) this.receive(bytes) },
+        (reason) => { if (this.tunnel === tunnel) this.fail(reason) },
+      )
+      if (this.tunnel !== tunnel) return
       tunnel.send(handshake(host, port))
       tunnel.send(loginStart(name))
       this.events.status(`Logging in as ${name}…`)
@@ -137,11 +140,7 @@ export class RealClient {
     this.state = 'idle'
     const tunnel = this.tunnel
     this.tunnel = null
-    if (tunnel) {
-      tunnel.onClose = () => {}
-      tunnel.onData = () => {}
-      tunnel.close()
-    }
+    tunnel?.close()
     this.keys.clear()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     this.events.status('Disconnected.')
@@ -266,11 +265,7 @@ export class RealClient {
     this.state = 'dead'
     const tunnel = this.tunnel
     this.tunnel = null
-    if (tunnel) {
-      tunnel.onClose = () => {}
-      tunnel.onData = () => {}
-      tunnel.close()
-    }
+    tunnel?.close()
     this.events.status(reason, 'error')
     this.events.disconnected(reason)
   }
