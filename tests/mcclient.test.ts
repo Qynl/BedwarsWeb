@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { concat, frame, handshake, loginStart, parseBlockChange, parseChunk, parseChunkBulk, parsePosition, readPacket, Reader, Writer } from '../src/mcclient/protocol'
+import { ChunkStore } from '../src/mcclient/world'
 
 describe('Minecraft 1.8 client protocol', () => {
   test('reads and writes varints and strings', () => {
@@ -75,6 +76,19 @@ describe('Minecraft 1.8 client protocol', () => {
     const columns = parseChunkBulk(packet)
     expect(columns.map((c) => [c.x, c.z])).toEqual([[1, 2], [-1, -2]])
     expect(columns[0].blocks.length).toBe(16 * 256 * 16)
+  })
+
+  test('merges a ground-up=false chunk update into the old column', () => {
+    const blocks = new Uint16Array(16 * 256 * 16)
+    blocks[0] = 1
+    blocks[16 * 256] = 2
+    const store = new ChunkStore()
+    store.set({ x: 0, z: 0, blocks, sections: 0b11, full: true })
+    const update = new Uint16Array(16 * 256 * 16)
+    update.fill(3, 0, 4096)
+    store.set({ x: 0, z: 0, blocks: update, sections: 0b1, full: false })
+    expect(store.block(0, 0, 0)).toBe(3)
+    expect(store.block(0, 16, 0)).toBe(2)
   })
 
   test('decodes a 1.8 block_change packed position', () => {

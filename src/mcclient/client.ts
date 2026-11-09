@@ -230,7 +230,8 @@ export class RealClient {
         this.position.y = p.y
         this.position.z = p.z
         this.yaw = p.yaw * Math.PI / 180
-        this.pitch = p.pitch * Math.PI / 180
+        // 1.8 pitch is positive looking down; the camera uses positive up.
+        this.pitch = -p.pitch * Math.PI / 180
         break
       }
       case S2C.chunk: {
@@ -375,7 +376,7 @@ export class RealClient {
     const now = performance.now()
     if (now - this.lastSend < 50) return
     this.lastSend = now
-    this.tunnel.send(positionLook(this.position.x, this.position.y, this.position.z, this.yaw * 180 / Math.PI, this.pitch * 180 / Math.PI, false, this.threshold))
+    this.tunnel.send(positionLook(this.position.x, this.position.y, this.position.z, this.yaw * 180 / Math.PI, -this.pitch * 180 / Math.PI, false, this.threshold))
   }
 
   private resize = (): void => {

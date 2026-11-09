@@ -322,6 +322,10 @@ export interface ChunkColumn {
   z: number
   /** 16 × 256 × 16 block ids, indexed `(y * 16 + z) * 16 + x`. */
   blocks: Uint16Array
+  /** Bitmask of the 16 sections this packet actually carried. */
+  sections: number
+  /** False for ground-up=false updates, which must be merged into the old column. */
+  full: boolean
 }
 
 /** 1.8's chunk column: 8192 bytes of block data, 2048 block light and 2048 sky light per section, then biomes. */
@@ -337,7 +341,7 @@ export function parseChunk(data: Uint8Array): ChunkColumn {
   for (let i = 0; i < 16; i++) if ((bitMap & (1 << i)) !== 0) sections++
   // Vanilla overworld columns carry sky light; the nether/end columns do not.
   const skyLight = payload.length >= sections * 12288 + (groundUp ? 256 : 0)
-  return { x, z, blocks: parseSections(payload, bitMap, skyLight, groundUp) }
+  return { x, z, blocks: parseSections(payload, bitMap, skyLight, groundUp), sections: bitMap, full: groundUp }
 }
 
 /** 1.8 sends many columns in one packet at spawn; each meta entry is followed by its section bytes. */
@@ -357,7 +361,7 @@ export function parseChunkBulk(data: Uint8Array): ChunkColumn[] {
     for (let i = 0; i < 16; i++) if ((bits & (1 << i)) !== 0) countBits++
     const size = countBits * sections + 256
     if (at + size > payload.length) break
-    columns.push({ x: meta.x, z: meta.z, blocks: parseSections(payload.subarray(at, at + size), bits, skyLight, true) })
+    columns.push({ x: meta.x, z: meta.z, blocks: parseSections(payload.subarray(at, at + size), bits, skyLight, true), sections: bits, full: true })
     at += size
   }
   return columns

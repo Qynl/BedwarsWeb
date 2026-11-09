@@ -51,7 +51,18 @@ export class ChunkStore {
   }
 
   set(chunk: ChunkColumn): void {
-    this.chunks.set(ChunkStore.key(chunk.x, chunk.z), chunk)
+    const key = ChunkStore.key(chunk.x, chunk.z)
+    const old = this.chunks.get(key)
+    if (old && !chunk.full) {
+      // Ground-up=false packets only replace the sections they include.
+      for (let section = 0; section < 16; section++) {
+        if ((chunk.sections & (1 << section)) === 0) continue
+        old.blocks.set(chunk.blocks.subarray(section * 4096, (section + 1) * 4096), section * 4096)
+      }
+      old.sections |= chunk.sections
+      return
+    }
+    this.chunks.set(key, chunk)
   }
 
   has(x: number, z: number): boolean {
