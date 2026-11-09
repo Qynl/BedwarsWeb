@@ -272,16 +272,23 @@ server; it hosts SKYSHARD's own rooms. Final-death spectator flow and the shop
 GUI are simpler than in the browser; the command fallbacks above cover the
 shop.
 
-### Real Minecraft in a browser tab
+### Real Minecraft in a browser tab (beta)
 
-The menu's **Real Minecraft (browser)** button opens the open-source
-[PrismarineJS web client](https://prismarinejs.github.io/prismarine-web-client/)
-in a new tab, with the server address and offline username filled in. It is a
-real Java Edition client running in the page: mineflayer speaks the Minecraft
-protocol and a WebSocket-to-TCP proxy reaches the server. It joins normal
-**offline-mode** (`online-mode=false`) servers, so any unused name works; an
-online-mode server will reject it. It is a separate MIT client, not this game's
-engine, and it does not join SKYSHARD rooms — the Java gateway above does that.
+The menu's **Real Minecraft (1.8.9 beta)** opens `src/mcclient/`: our own
+browser client, not a launcher. It speaks the Java Edition 1.8.9 wire protocol
+directly, logs in with an offline username, reads both normal and bulk chunk
+packets, renders the terrain with flat block colours, keeps the connection
+alive, supports fly controls and chat, and shows server messages. The browser
+reaches TCP servers through the public net-browserify proxy at
+`pproxy.rom1504.fr`, so no backend or port forwarding is needed.
+
+It is deliberately **not** Eaglercraft parity yet. It is a terrain viewer with
+free-fly movement: there is no collision/physics, block breaking or placing,
+inventory, entities, sounds or Mojang assets. Only **offline-mode**
+(`online-mode=false`) servers work; online-mode sends an encryption request and
+the client refuses it. The protocol implementation and block palette live in
+`src/mcclient/protocol.ts` and `src/mcclient/world.ts`; the live server test is
+`tests/mcclient-live.test.ts`.
 
 ### One command: website + Java server + free public address
 

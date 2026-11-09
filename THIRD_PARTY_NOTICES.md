@@ -27,6 +27,14 @@ SOFTWARE.
 ```
 
 
+The browser client in `src/mcclient/` uses
+[fflate](https://github.com/101arrowz/fflate) (MIT) for the zlib compression
+that Minecraft's packet framing requires. It reaches Java servers through the
+public [net-browserify](https://github.com/PrismarineJS/net-browserify) proxy at
+`pproxy.rom1504.fr`; that service is not bundled with this repository. The
+client includes no Mojang code or assets: block colours are drawn from a small
+table in `src/mcclient/world.ts`.
+
 The optional Java Edition gateway (`src/games/bedwars/minecraft.ts`) uses
 Minecraft protocol libraries from the PrismarineJS project:
 `minecraft-protocol` (BSD-3-Clause) and `prismarine-registry`,
