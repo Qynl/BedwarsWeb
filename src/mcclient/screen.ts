@@ -51,32 +51,43 @@ export function openRealClient(): () => void {
   const chatBox = document.getElementById('mc-chat')!
   const chatInput = document.getElementById('mc-chat-input') as HTMLInputElement
 
-  const client = new RealClient(canvas, {
-    status(text, kind = 'info') {
-      status.textContent = text
-      status.dataset.kind = kind
-      worldStatus.textContent = text
-    },
-    chat(line) {
-      addChat(line)
-    },
-    joined() {
-      panel.hidden = true
-      hud.hidden = false
-      root.classList.add('playing')
-      canvas.focus()
-    },
-    disconnected(reason) {
-      panel.hidden = false
-      hud.hidden = true
-      root.classList.remove('playing')
-      status.textContent = reason
-      status.dataset.kind = 'error'
-    },
-    moved(x, y, z) {
-      coords.textContent = `${x.toFixed(1)} ${y.toFixed(1)} ${z.toFixed(1)}`
-    },
-  })
+  let client: RealClient
+  try {
+    client = new RealClient(canvas, {
+      status(text, kind = 'info') {
+        status.textContent = text
+        status.dataset.kind = kind
+        worldStatus.textContent = text
+      },
+      chat(line) {
+        addChat(line)
+      },
+      joined() {
+        panel.hidden = true
+        hud.hidden = false
+        root.classList.add('playing')
+        canvas.focus()
+      },
+      disconnected(reason) {
+        panel.hidden = false
+        hud.hidden = true
+        root.classList.remove('playing')
+        status.textContent = reason
+        status.dataset.kind = 'error'
+      },
+      moved(x, y, z) {
+        coords.textContent = `${x.toFixed(1)} ${y.toFixed(1)} ${z.toFixed(1)}`
+      },
+    })
+  } catch (error) {
+    form.hidden = true
+    status.textContent = `WebGL is unavailable in this browser (${(error as Error).message}). Enable hardware acceleration and try again.`
+    status.dataset.kind = 'error'
+    const closeFailed = () => root.remove()
+    document.getElementById('mc-close')!.addEventListener('click', closeFailed)
+    document.getElementById('mc-back')!.addEventListener('click', closeFailed)
+    return closeFailed
+  }
 
   function parseAddress(raw: string): { host: string; port: number } | null {
     const value = raw.trim().replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '')

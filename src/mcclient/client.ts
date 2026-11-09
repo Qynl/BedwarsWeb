@@ -71,6 +71,7 @@ export class RealClient {
   private state: 'idle' | 'login' | 'play' | 'dead' = 'idle'
   private readonly position = { x: 0, y: 64, z: 0, yaw: 0, pitch: 0 }
   private lastSend = 0
+  private chunkTimer: ReturnType<typeof setTimeout> | null = null
   private lastMove = 0
   private yaw = 0
   private pitch = 0
@@ -129,6 +130,7 @@ export class RealClient {
     this.meshes.clear()
     this.pending.clear()
     this.chunks.clear()
+    if (this.chunkTimer) { clearTimeout(this.chunkTimer); this.chunkTimer = null }
     this.position.x = 0
     this.position.y = 64
     this.position.z = 0
@@ -148,6 +150,7 @@ export class RealClient {
 
   dispose(): void {
     this.disposed = true
+    if (this.chunkTimer) { clearTimeout(this.chunkTimer); this.chunkTimer = null }
     this.disconnect()
     window.removeEventListener('resize', this.resize)
     window.removeEventListener('keydown', this.onKeyDown)
@@ -280,6 +283,11 @@ export class RealClient {
       const z = column.z + dz
       if (this.chunks.has(x, z)) this.pending.add(`${x},${z}`)
     }
+    if (this.chunkTimer) clearTimeout(this.chunkTimer)
+    this.chunkTimer = setTimeout(() => {
+      this.chunkTimer = null
+      if (this.state === 'play') this.events.status(`Terrain: ${this.chunks.all().length} chunks.`, 'ok')
+    }, 400)
   }
 
   private buildChunk(cx: number, cz: number): void {
