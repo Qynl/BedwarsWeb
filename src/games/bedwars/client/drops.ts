@@ -1,6 +1,7 @@
 import { CanvasTexture, DoubleSide, Group, Mesh, MeshLambertMaterial, NearestFilter, PlaneGeometry, SRGBColorSpace } from 'three'
 import type { DropLike } from '../../../engine/render/entities'
 import { drawItemArt } from './icons'
+import { itemModel } from './item-models'
 
 /**
  * Items lying in the world (generator piles): each a flat pixel-art sprite
@@ -36,6 +37,16 @@ export class ItemDrops {
       if (!d) {
         const obj = new Group()
         for (let i = 0; i < 3; i++) {
+          // Art items are solid voxel models now, so a pile reads from every angle.
+          const model = itemModel(v.item)
+          if (model) {
+            model.group.scale.setScalar(0.034)
+            model.group.position.set((i - 1) * 0.08, i * 0.06, (i % 2) * 0.06 - 0.03)
+            model.group.rotation.set(0.15, i * 0.5, -0.6)
+            model.material.emissive.set('#1a1a1a')
+            obj.add(model.group)
+            continue
+          }
           const m = new Mesh(this.plane, this.material(v.item))
           m.position.set((i - 1) * 0.08, i * 0.06, (i % 2) * 0.06 - 0.03)
           m.rotation.y = i * 0.5

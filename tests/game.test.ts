@@ -126,9 +126,13 @@ describe('beds', () => {
     expect(room.world.get(bed.x, bed.y, bed.z)).toBe(AIR)
     expect(room.world.get(bed.x + bed.dx, bed.y, bed.z + bed.dz)).toBe(AIR)
     expect(room.teams.get('red')!.bed).toBe(false)
-    expect(a.events('bed')[0]).toContain('Red bed was destroyed by Bea')
-    expect(a.events('title')).toContain('Bed destroyed')
+    expect(a.events('bed')[0]).toContain('Red shard core was shattered by Bea')
+    expect(a.events('title')).toContain('Shard core shattered')
     expect(b.p.stats.beds).toBe(1)
+    // The core scatters three emerald shards, and the breaking team gets a short rush.
+    expect(room.drops.filter((d) => d.item === 'emerald' && d.count === 1).length).toBeGreaterThanOrEqual(3)
+    expect(b.p.effects.speed).toBeGreaterThan(room.tickCount)
+    expect(b.p.effects.jump).toBeGreaterThan(room.tickCount)
   })
 })
 

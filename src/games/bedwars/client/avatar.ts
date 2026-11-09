@@ -8,7 +8,7 @@ import {
   Mesh,
   MeshLambertMaterial,
   NearestFilter,
-  PlaneGeometry,
+  Object3D,
   SRGBColorSpace,
   Sprite,
   SpriteMaterial,
@@ -19,7 +19,7 @@ import { blockCube } from '../../../engine/render/entities'
 import { TEAM_COLORS, TEAM_NAMES, type TeamId } from '../blocks'
 import { item, placedBlock, type ArmorTier } from '../items'
 import { EYE_COLORS, HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, type Look } from '../look'
-import { drawItemArt } from './icons'
+import { itemModel } from './item-models'
 
 /**
  * Players drawn as 32-pixel-tall blocky figures with painted skins: a base
@@ -384,7 +384,7 @@ export class Avatar {
   private capeMesh: Mesh
   private capeMat = new MeshLambertMaterial({ side: DoubleSide })
   private capeAngle = 0.1
-  private held: Mesh | null = null
+  private held: Object3D | null = null
   private heldKey = ''
   private shieldMesh: Mesh
   private tag: Sprite | null = null
@@ -512,13 +512,13 @@ export class Avatar {
       m.position.set(0, -12 * PX, -0.12)
       this.held = m
     } else {
-      const c = document.createElement('canvas')
-      c.width = c.height = 16
-      drawItemArt(c.getContext('2d')!, def.id)
-      const m = new Mesh(new PlaneGeometry(0.55, 0.55), new MeshLambertMaterial({ map: texture(c), alphaTest: 0.5, side: DoubleSide }))
-      m.position.set(0, -12 * PX - 0.08, -0.2)
-      m.rotation.set(0, Math.PI / 2, Math.PI / 4)
-      this.held = m
+      const model = itemModel(def.id)
+      if (!model) return
+      model.group.scale.setScalar(0.042)
+      model.group.position.set(0, -12 * PX - 0.02, -0.16)
+      // Blade forward out of the fist, the flat of the blade turned to catch the light.
+      model.group.rotation.set(0, Math.PI / 2, -Math.PI / 4)
+      this.held = model.group
     }
     this.parts.armR.add(this.held)
   }

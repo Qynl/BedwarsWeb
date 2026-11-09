@@ -40,6 +40,7 @@ export const FIXED_CONTROLS: { label: string; input: string; help: string }[] = 
 
 export type SprintMode = 'hold' | 'toggle' | 'always'
 export type Quality = 'low' | 'medium' | 'high'
+export type ShaderPreset = 'off' | 'vivid' | 'cinematic'
 
 export interface Settings {
   sensitivity: number
@@ -52,6 +53,8 @@ export interface Settings {
   /** Blocks until the fog fully hides the world. */
   renderDistance: number
   quality: Quality
+  /** Bloom, sun shafts, colour grading and vignette (the post-processing stack), and how strong. */
+  shaderPreset: ShaderPreset
   volume: number
   keys: Record<Action, string[]>
 }
@@ -66,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showFps: false,
   renderDistance: 150,
   quality: 'high',
+  shaderPreset: 'vivid',
   volume: 0.6,
   keys: Object.fromEntries(ACTIONS.map((a) => [a.id, [...a.keys]])) as Record<Action, string[]>,
 }
@@ -85,6 +89,8 @@ export function parseSettings(raw: unknown): Settings {
     }
   // Settings saved before version 2 carry the old default sensitivity of 1; they get the new one.
   const oldDefault = (raw as { version?: number } | null)?.version === undefined && r.sensitivity === 1
+  // Settings from before presets stored a plain on/off `shaders` flag.
+  const legacyShaders = (raw as { shaders?: unknown } | null)?.shaders
   return {
     sensitivity: oldDefault ? d.sensitivity : clamp(r.sensitivity, 0.1, 4, d.sensitivity),
     invertY: typeof r.invertY === 'boolean' ? r.invertY : d.invertY,
@@ -95,6 +101,7 @@ export function parseSettings(raw: unknown): Settings {
     showFps: typeof r.showFps === 'boolean' ? r.showFps : d.showFps,
     renderDistance: clamp(r.renderDistance, 60, 300, d.renderDistance),
     quality: oneOf(r.quality, ['low', 'medium', 'high'] as const, d.quality),
+    shaderPreset: oneOf(r.shaderPreset, ['off', 'vivid', 'cinematic'] as const, typeof legacyShaders === 'boolean' ? (legacyShaders ? 'vivid' : 'off') : d.shaderPreset),
     volume: clamp(r.volume, 0, 1, d.volume),
     keys,
   }

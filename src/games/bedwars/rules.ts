@@ -5,7 +5,7 @@ import { RESPAWN_TICKS, TPS } from './constants'
 export type BotLevel = 'easy' | 'normal' | 'hard' | 'expert'
 export const BOT_LEVELS: BotLevel[] = ['easy', 'normal', 'hard', 'expert']
 
-export type TimelineKind = 'diamond-2' | 'emerald-2' | 'diamond-3' | 'emerald-3' | 'beds-gone' | 'game-end'
+export type TimelineKind = 'diamond-2' | 'emerald-2' | 'diamond-3' | 'emerald-3' | 'storm' | 'meteor' | 'beds-gone' | 'game-end'
 
 export interface TimelineEvent {
   /** Ticks after the round starts. */
@@ -39,7 +39,9 @@ const min = 60 * TPS
 
 export const TIMELINE: TimelineEvent[] = [
   { at: 5 * min, kind: 'diamond-2', label: 'Diamond II' },
+  { at: 7 * min, kind: 'storm', label: 'Shardstorm' },
   { at: 10 * min, kind: 'emerald-2', label: 'Emerald II' },
+  { at: 13 * min, kind: 'meteor', label: 'Meteor shower' },
   { at: 15 * min, kind: 'diamond-3', label: 'Diamond III' },
   { at: 20 * min, kind: 'emerald-3', label: 'Emerald III' },
   { at: 25 * min, kind: 'beds-gone', label: 'Beds destroyed' },
@@ -74,6 +76,12 @@ export function scaleTimeline(timeline: TimelineEvent[], factor: number): Timeli
 }
 
 export type GeneratorKind = 'iron' | 'gold' | 'diamond' | 'emerald'
+
+/** How long each arena weather event lasts. */
+export const STORM_TICKS = 75 * TPS
+export const METEOR_TICKS = 45 * TPS
+/** Ticks between shard meteors while the shower is on. */
+export const METEOR_INTERVAL = 6 * TPS
 
 /** Ticks between drops. Forge levels speed up iron and gold and add emeralds from level 3. */
 export const GENERATOR_INTERVAL: Record<GeneratorKind, number[]> = {

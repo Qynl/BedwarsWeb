@@ -289,12 +289,22 @@ function shade(hex: string, f: number): string {
   return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`
 }
 
+/** The pixel-art rows for an item, or null for blocks and unknown ids. */
+export function itemArt(id: string): string[] | null {
+  return artFor(id)
+}
+
+/** The palette those rows are drawn with; the voxel models use the same one. */
+export function itemPalette(id: string): Record<string, string> {
+  const color = ARMOR_ICON_COLORS[id] ?? item(id)?.color ?? '#ffffff'
+  return { h: '#7a5232', m: shade(color, 1), d: shade(color, 0.7), l: shade(color, 1.25), x: '#17120e' }
+}
+
 /** Draws an item's pixel art onto a 16×16 canvas context at (0, 0). */
 export function drawItemArt(ctx: CanvasRenderingContext2D, id: string): boolean {
   const art = artFor(id)
   if (!art) return false
-  const color = ARMOR_ICON_COLORS[id] ?? item(id)?.color ?? '#ffffff'
-  const palette: Record<string, string> = { h: '#7a5232', m: shade(color, 1), d: shade(color, 0.7), l: shade(color, 1.25), x: 'rgba(20,16,12,0.9)' }
+  const palette = itemPalette(id)
   art.forEach((row, y) =>
     [...row].forEach((ch, x) => {
       if (ch === '.') return

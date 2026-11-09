@@ -3,7 +3,7 @@
  * on the first click (browsers require a gesture); before that, sounds are
  * silently skipped.
  */
-export type SoundName = 'hit' | 'hurt' | 'break' | 'place' | 'pickup' | 'kill' | 'bed' | 'tick' | 'start' | 'buy' | 'deny' | 'explode' | 'bow' | 'throw'
+export type SoundName = 'hit' | 'hurt' | 'break' | 'place' | 'pickup' | 'kill' | 'bed' | 'tick' | 'start' | 'buy' | 'deny' | 'explode' | 'bow' | 'throw' | 'swing'
 
 export class Sound {
   private ctx: AudioContext | null = null
@@ -69,6 +69,11 @@ export class Sound {
       case 'hit':
         burst(0.12, 900, 0.5, 0.8)
         tone(180, 0, 0.1, 'triangle', 0.3, 0.5)
+        break
+      case 'swing':
+        // A short airy whoosh, filtered high so it sits under the hit thump.
+        burst(0.13, 1900, 0.3, 0.55)
+        tone(520, 0, 0.08, 'triangle', 0.05, 0.5)
         break
       case 'hurt':
         tone(220, 0, 0.18, 'sawtooth', 0.18, 0.6)

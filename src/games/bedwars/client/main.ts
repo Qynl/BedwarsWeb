@@ -7,8 +7,10 @@ import { Game } from './game'
 import { loadSettings } from './settings'
 import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
+import { openProfile } from './profile-ui'
+import { levelInfo, loadProfile } from './profile'
 import { bestRoom, cleanRoomName, fetchRooms, openSeats, randomRoomName, statusLabel, type RoomInfo, type RoomList } from './rooms'
-import { FREEBUFF_MARK, freebuffUrl, promoCard, promoShown } from './promo'
+import { FREEBUFF_MARK, freebuffUrl, promoShown } from './promo'
 import '@fontsource/pixelify-sans/400.css'
 import '@fontsource/pixelify-sans/700.css'
 import { drawTile } from '../../../engine/render/textures'
@@ -44,6 +46,12 @@ function savedName(): string {
   }
 }
 
+/** Shards and level under the name field, so progress is visible from the menu. */
+function profileLine(): string {
+  const profile = loadProfile()
+  return `Level ${levelInfo(profile.xp).level} · ${profile.shards} shards`
+}
+
 function start(options: JoinOptions, offline: boolean) {
   try {
     localStorage.setItem('name', options.name)
@@ -74,6 +82,10 @@ function start(options: JoinOptions, offline: boolean) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
+/** Minecraft-style splash lines: one at random each time the menu opens. */
+const SPLASHES = ['Shaders on!', 'Now with cloud shadows', 'Shard cores online', 'Break theirs first', '100% blocks', 'Mind the void', 'Made of shards', 'Wool is your friend', 'Also try the sandbox', 'Storm incoming']
+const splash = () => SPLASHES[Math.floor(Math.random() * SPLASHES.length)]
+
 /** "5 playing online now", for the menu, or nothing when there is no server to ask. */
 function onlineLine(list: RoomList | null): string {
   if (!list) return ''
@@ -97,20 +109,24 @@ function menu() {
   app.innerHTML = `
     <div class="menu" style="background-image:url(${dirtTile()})">
       <div class="menu-wrap">
-      <h1 class="menu-title">${BRAND}</h1>
-      <p class="menu-tagline">Protect your bed. Break theirs.</p>
+      <div class="title-wrap">
+        <h1 class="menu-title">${BRAND}</h1>
+        <p class="splash">${splash()}</p>
+      </div>
+      <p class="menu-tagline">Sky islands. One bed. No mercy.</p>
       <div class="menu-card">
         <label class="field"><span>Name</span><input id="name" maxlength="16" placeholder="Your name" value="${esc(savedName())}"></label>
         <p class="online-line" id="online"></p>
+        <p class="profile-line" id="profile">${profileLine()}</p>
         <div class="menu-buttons">
           <button class="btn primary" data-go="online">Play online</button>
           <button class="btn" data-go="solo">Solo against bots</button>
           <button class="btn" data-go="sandbox">Practice sandbox</button>
+          <button class="btn" data-go="progress">Progress</button>
           <div class="menu-pair"><button class="btn" data-go="wardrobe">Wardrobe</button><button class="btn" data-go="settings">Settings</button></div>
         </div>
         <p class="menu-foot">${__SITES__ ? 'Host a casual match for up to four friends, or join with a room code. The host runs the match and must keep this tab open and visible.' : 'Online plays with people on this server: pick a room or make one and share its link.'} Solo runs bots on your own machine. The sandbox has a station for every mechanic and /bot for sparring.</p>
       </div>
-      ${promoCard()}
       <p class="version">v${__APP_VERSION__}${promoShown() ? ` · <a href="${freebuffUrl('menu-footer')}" target="_blank" rel="noopener">${FREEBUFF_MARK}Made with Freebuff</a>` : ''}</p>
       </div>
     </div>`
@@ -128,6 +144,10 @@ function menu() {
       }
       if (go === 'wardrobe') {
         openWardrobe(app, null, () => {}, () => {})
+        return
+      }
+      if (go === 'progress') {
+        openProfile(app, () => {})
         return
       }
       const name = playerName()

@@ -7,7 +7,8 @@
  * Kept: the packed per-vertex light word (sunlight nibble + ambient-occlusion
  * bits), the AO lookup table, face shades, hemisphere ambient, the
  * tunnel-darkening floor, the ACES-style light curve and the sky-gradient fog.
- * Dropped: water, shadows, block light, local lights, weather and greedy UVs.
+ * Added here: drifting cloud shadows across the terrain, warm sun scattering
+ * in the fog, a brighter sky with a warm horizon and a proper sun halo.
  */
 import { BackSide, Color, ShaderMaterial, Vector3, type Texture } from 'three'
 
@@ -27,13 +28,13 @@ export interface Environment {
 export function defaultEnvironment(): Environment {
   return {
     sunDirection: new Vector3(0.45, 1, 0.3).normalize(),
-    sunColor: new Color(1, 0.97, 0.9),
-    ambientColor: new Color(0.55, 0.6, 0.7),
-    sunlightIntensity: 0.85,
+    sunColor: new Color(1, 0.95, 0.84),
+    ambientColor: new Color(0.55, 0.62, 0.76),
+    sunlightIntensity: 0.95,
     minLightLevel: 0.18,
-    skyTop: new Color('#4f8fe6'),
-    skyMiddle: new Color('#bfe0ff'),
-    skyBottom: new Color('#3e5a86'),
+    skyTop: new Color('#2f6fd8'),
+    skyMiddle: new Color('#a8d8ff'),
+    skyBottom: new Color('#2c405c'),
     fogNear: 70,
     fogFar: 150,
   }
@@ -92,6 +93,7 @@ export function createChunkMaterial(atlas: Texture, atlasSize: number, env: Envi
       uFaceShades: { value: [0.78, 0.88, 0.62, 1] },
       uFogNear: { value: env.fogNear },
       uFogFar: { value: env.fogFar },
+      uTime: { value: 0 },
       ...skyUniforms(env),
     },
     vertexShader: /* glsl */ `
@@ -127,6 +129,7 @@ export function createChunkMaterial(atlas: Texture, atlasSize: number, env: Envi
       uniform vec4 uFaceShades;
       uniform float uFogNear;
       uniform float uFogFar;
+      uniform float uTime;
       ${SKY_UNIFORMS}
       varying vec2 vUv;
       varying float vAO;
@@ -134,6 +137,30 @@ export function createChunkMaterial(atlas: Texture, atlasSize: number, env: Envi
       varying float vBlock;
       varying vec3 vWorldPos;
       varying vec3 vNormal;
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float vnoise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i);
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      // Two drifting noise layers become soft cloud shadows on the terrain.
+      float cloudShadow(vec2 p) {
+        float n = vnoise(p * 0.028 + vec2(uTime * 0.010, uTime * 0.004)) * 0.65
+                + vnoise(p * 0.075 - vec2(uTime * 0.017, uTime * 0.007)) * 0.35;
+        return mix(0.72, 1.0, smoothstep(0.32, 0.68, n));
+      }
 
       void main() {
         // Clamp the UV gradient to half a tile so mip selection never reaches
@@ -153,6 +180,8 @@ export function createChunkMaterial(atlas: Texture, atlasSize: number, env: Envi
         vec3 n = normalize(vNormal);
         float NdotL = max(dot(n, uSunDirection) * 0.85 + 0.15, 0.0);
         vec3 sunContribution = uSunColor * NdotL * uSunlightIntensity * vSun;
+        // Drifting cloud shadows only darken direct sun, so shade stays blue.
+        sunContribution *= cloudShadow(vWorldPos.xz + vWorldPos.y * 0.4);
 
         float hemisphere = n.y * 0.5 + 0.5;
         vec3 skyAmbient = mix(uAmbientColor * 0.4, uAmbientColor, hemisphere);
@@ -170,11 +199,15 @@ export function createChunkMaterial(atlas: Texture, atlasSize: number, env: Envi
         total *= vAO * faceShade;
         // ACES-style curve on the light (Voxelize applies it here rather than as a renderer tone map).
         total = (total * (2.51 * total + 0.03)) / (total * (2.43 * total + 0.59) + 0.14);
-        vec3 color = tex.rgb * total * 1.25;
+        vec3 color = tex.rgb * total * 1.3;
 
         vec3 toFrag = vWorldPos - cameraPosition;
+        vec3 dir = normalize(toFrag);
         float fog = smoothstep(uFogNear, uFogFar, length(toFrag.xz));
-        color = mix(color, skyGradient(normalize(toFrag)), fog);
+        // Sun scattering: fog warms and brightens when you look toward the sun.
+        float sunAmount = pow(max(dot(dir, uSunDirection), 0.0), 8.0);
+        vec3 fogColor = skyGradient(dir) + uSunColor * sunAmount * 0.32;
+        color = mix(color, fogColor, fog);
         #ifdef TRANSLUCENT
         gl_FragColor = vec4(color, tex.a);
         #else
@@ -203,15 +236,29 @@ export function createSkyMaterial(env: Environment): ShaderMaterial {
       ${SKY_UNIFORMS}
       uniform vec3 uSunColor;
       varying vec3 vWorldPosition;
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
       void main() {
         // View-relative, as in Voxelize, so the gradient never seams around the origin.
         vec3 dir = normalize(vWorldPosition - cameraPosition);
         vec3 color = skyGradient(dir);
-        float sunCos = dot(dir, uSunDirection);
+        float sunCos = clamp(dot(dir, uSunDirection), -1.0, 1.0);
         float sunAngle = sqrt(max(2.0 - 2.0 * sunCos, 0.0));
-        float disc = 1.0 - smoothstep(0.035, 0.045, sunAngle);
-        float glow = exp(-sunAngle * 6.0) * 0.35;
-        color += uSunColor * (disc * 1.4 + glow);
+        // Three layers: the disc, a tight bloom and a wide atmospheric halo.
+        float disc = 1.0 - smoothstep(0.018, 0.030, sunAngle);
+        float glow = exp(-sunAngle * 9.0);
+        float halo = exp(-sunAngle * 2.2);
+        color += uSunColor * (disc * 3.2 + glow * 0.55 + halo * 0.16);
+        // Warm the horizon around the sun, so the sky reads as late afternoon.
+        float horizon = 1.0 - smoothstep(0.0, 0.55, abs(dir.y));
+        color = mix(color, color * vec3(1.12, 0.94, 0.82), horizon * pow(max(sunCos, 0.0), 3.0) * 0.5);
+        // Dithering hides the banding a smooth dome would otherwise show.
+        color += (hash21(gl_FragCoord.xy) - 0.5) / 255.0;
         gl_FragColor = vec4(color, 1.0);
         #include <colorspace_fragment>
       }

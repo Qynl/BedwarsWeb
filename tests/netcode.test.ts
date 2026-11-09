@@ -111,8 +111,8 @@ describe('around the base', () => {
     const blue = room.map.bases.find((base) => base.team === 'blue')!
     room.breakBlock(a.p, blue.bed.x, blue.bed.y, blue.bed.z)
     const titles = (c: TestClient) => c.msgs.flatMap((m) => (m.t === 'event' && m.kind === 'title' ? [m.text] : []))
-    expect(titles(b)).toContain('Bed destroyed')
-    expect(titles(a)).toContain('Blue bed destroyed')
+    expect(titles(b)).toContain('Shard core shattered')
+    expect(titles(a)).toContain('Blue core shattered')
   })
 
   test('flowers and poles do not block line of sight; solid blocks do', () => {

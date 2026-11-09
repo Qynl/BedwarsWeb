@@ -13,7 +13,7 @@ import {
   WebGLRenderer,
   type Object3D,
 } from 'three'
-import { AIR, blockDef } from '../blocks'
+import { AIR, blockDef, TEAM_COLORS, type TeamId } from '../blocks'
 import { breakTicks, checkPlace } from '../../../engine/building'
 import { checkBreak } from '../beds'
 import { ATTACK_REACH, BLOCK_REACH, EYE_HEIGHT, SNEAK_EYE_HEIGHT, TICK_MS, TPS } from '../constants'
@@ -33,6 +33,7 @@ import { ItemDrops } from './drops'
 import { createMapDecor, PlayerModels } from './models'
 import { IconPainter } from './icons'
 import { createChunkMaterial, defaultEnvironment } from '../../../engine/render/shaders'
+import { PostFX } from '../../../engine/render/postfx'
 import { createSky } from '../../../engine/render/sky'
 import { crackTextures, createAtlasTexture } from '../../../engine/render/textures'
 import { ViewModel } from './viewmodel'
@@ -44,6 +45,9 @@ import { FloatingText } from './floating-text'
 import { GeneratorDisplays } from './generators'
 import { Avatar } from './avatar'
 import { loadLook } from './wardrobe'
+import { ShardCores } from './cores'
+import { WeatherFX } from './weather'
+import { grant, levelInfo, loadProfile, REWARDS, saveProfile } from './profile'
 import { encodeLook, KILL_EFFECTS, TRAILS, type Look } from '../look'
 import { falloff, Sound } from './sound'
 
@@ -60,6 +64,7 @@ export class Game {
   readonly scene = new Scene()
   readonly camera = new PerspectiveCamera(75, 1, 0.05, 600)
   readonly hud: Hud
+  private postfx = new PostFX()
   private env = defaultEnvironment()
   private layout = atlasLayout()
   private atlas = createAtlasTexture(this.layout)
@@ -125,8 +130,19 @@ export class Game {
   private projectiles = new ProjectileModels(this.layout, this.atlas.texture)
   private damageText = new FloatingText()
   private gens = new GeneratorDisplays()
+  private cores = new ShardCores()
+  private weatherFx = new WeatherFX()
+  private profile = loadProfile()
+  private statsSeen = { kills: 0, finals: 0, beds: 0, deaths: 0 }
+  private awardedRound = false
+  private weatherKind: 'storm' | 'meteor' | null = null
   private shake = 0
   private hurtRoll = 0
+  /** Weapon sway, driven by how fast the view is turning. */
+  private swayX = 0
+  private swayY = 0
+  private lastYaw = 0
+  private lastPitch = 0
   private pendingHit: { id: number; at: number; crit: boolean } | null = null
   private lastKnock: { vx: number; vz: number; at: number } | null = null
   private running = true
@@ -155,7 +171,7 @@ export class Game {
     sun.position.copy(this.env.sunDirection).multiplyScalar(100)
     this.scene.add(sun)
     this.scene.fog = new Fog(this.env.skyMiddle, this.env.fogNear, this.env.fogFar)
-    this.scene.add(this.players.group, this.dropModels.group, this.cursor.group, this.particles.mesh, this.projectiles.group, this.damageText.group, this.selfAvatar.root, this.gens.group)
+    this.scene.add(this.players.group, this.dropModels.group, this.cursor.group, this.particles.mesh, this.projectiles.group, this.damageText.group, this.selfAvatar.root, this.gens.group, this.cores.group, this.weatherFx.group)
     this.selfAvatar.root.visible = false
     this.camera.rotation.order = 'YXZ'
 
@@ -182,6 +198,9 @@ export class Game {
     this.running = false
     this.connection.close()
     window.removeEventListener('resize', this.resize)
+    this.postfx.dispose()
+    this.cores.dispose()
+    this.weatherFx.dispose()
     this.renderer.dispose()
     this.hud.destroy()
     this.renderer.domElement.remove()
@@ -215,6 +234,7 @@ export class Game {
             if (mine) {
               if (this.pendingHit!.crit) this.particles.burst(next.x, next.y + 1.5, next.z, '#fff3a0', 12, 0.8, 4)
               this.hud.hitMarker(this.pendingHit!.crit)
+              this.viewModel.hitImpact()
               this.pendingHit = null
             }
           }
@@ -222,7 +242,11 @@ export class Game {
         }
         for (const id of m.gone ?? []) this.viewMap.delete(id)
         this.views = [...this.viewMap.values()]
-        if (m.game) this.gameView = m.game
+        if (m.game) {
+          const before = this.gameView
+          this.gameView = m.game
+          this.onGameState(before, m.game)
+        }
         this.players.update(this.views, this.myId, m.tick, performance.now(), this.self?.team ?? null)
         if (m.drops) this.dropModels.update(m.drops)
         break
@@ -231,6 +255,7 @@ export class Game {
         const before = this.self
         this.self = m.self
         if (!before) this.hud.setLoading(null)
+        this.syncStats(m.self.stats)
         if (before && m.self.health < before.health && m.self.alive) {
           this.hud.hurtFlash()
           this.sound.play('hurt')
@@ -341,6 +366,9 @@ export class Game {
     const top = map.bases[0]?.spawn[1] ?? 40
     this.sky = createSky(this.env, top + 45, [this.world.sx / 2, this.world.sz / 2])
     this.scene.add(this.sky.root)
+    this.cores.load(map)
+    this.weatherKind = null
+    this.weatherFx.set(null, this.scene, this.renderer, this.sky, this.env.skyMiddle)
     this.spectator = { x: map.spectator[0], y: map.spectator[1], z: map.spectator[2] }
   }
 
@@ -462,6 +490,7 @@ export class Game {
   applySettings(s: Settings) {
     this.settings = s
     this.renderer.setPixelRatio(pixelRatio(s.quality, window.devicePixelRatio))
+    this.postfx.setPreset(s.shaderPreset)
     this.resize()
     const near = s.renderDistance * 0.45
     for (const m of [this.material, this.glassMaterial]) {
@@ -642,6 +671,7 @@ export class Game {
   private primary() {
     const t = this.target
     this.viewModel.swingNow()
+    this.sound.play('swing', 0.3, 0.9 + Math.random() * 0.2)
     // Remote players are drawn a few ticks in the past (the jitter buffer); say which tick, for lag compensation.
     if (t?.kind === 'player') {
       this.send({ t: 'attack', target: t.id, seen: Math.round(this.players.renderTick(performance.now())) })
@@ -758,6 +788,7 @@ export class Game {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
     this.renderer.setSize(w, h)
+    this.postfx.setSize(this.renderer)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }
@@ -788,6 +819,12 @@ export class Game {
     if (second !== this.lastCountdown && second > 0 && second <= 5) this.sound.play('tick')
     this.lastCountdown = second
     const seconds = now / 1000
+    this.cores.update(seconds, this.gameView?.teams ?? null)
+    this.weatherFx.frame(dt, this.camera.position.x, this.camera.position.y, this.camera.position.z)
+    if (this.weatherKind === 'storm' && Math.random() < dt * 0.11) {
+      this.hud.lightningFlash()
+      this.sound.play('explode', 0.3, 2)
+    }
 
     if (this.alive) {
       const x = this.prev.x + (this.me.x - this.prev.x) * alpha
@@ -823,6 +860,8 @@ export class Game {
 
     if (this.chunks) this.chunks.update(this.camera.position.x, this.camera.position.y, this.camera.position.z)
     this.sky?.update(this.camera.position.x, this.camera.position.y, this.camera.position.z, seconds)
+    // Drifting cloud shadows: the terrain shader needs the clock.
+    for (const m of [this.material, this.glassMaterial]) m.uniforms.uTime.value = seconds
 
     const t = this.target
     if (this.alive && t?.kind === 'block' && this.world) {
@@ -834,13 +873,28 @@ export class Game {
     const held = this.self?.inventory[this.self.selected]?.id ?? null
     this.viewModel.setHeld(held, this.self?.team ?? null)
     const walking = this.alive && this.me.onGround && this.settings.viewBobbing ? Math.min(1, Math.hypot(this.me.vx, this.me.vz) / 0.2) : 0
-    this.viewModel.frame(dt, walking, this.rightDown && this.heldDef()?.kind === 'shield', false, this.camera.aspect, this.drawCharge())
+    // Weapon sway: the hand lags behind fast turns, then settles back.
+    const dYaw = Math.atan2(Math.sin(this.me.yaw - this.lastYaw), Math.cos(this.me.yaw - this.lastYaw))
+    const dPitch = this.me.pitch - this.lastPitch
+    this.lastYaw = this.me.yaw
+    this.lastPitch = this.me.pitch
+    const swayScale = this.alive && !this.thirdPerson ? 20 : 0
+    this.swayX += (Math.max(-1, Math.min(1, dYaw * swayScale)) - this.swayX) * Math.min(1, dt * 14)
+    this.swayY += (Math.max(-1, Math.min(1, dPitch * swayScale)) - this.swayY) * Math.min(1, dt * 14)
+    this.viewModel.frame(dt, walking, this.rightDown && this.heldDef()?.kind === 'shield', false, this.camera.aspect, this.drawCharge(), this.swayX, this.swayY)
 
-    this.renderer.clear()
-    this.renderer.render(this.scene, this.camera)
-    if (this.alive && !this.thirdPerson) {
-      this.renderer.clearDepth()
-      this.renderer.render(this.viewModel.scene, this.viewModel.camera)
+    const drawHand = () => {
+      if (this.alive && !this.thirdPerson) this.renderer.render(this.viewModel.scene, this.viewModel.camera)
+    }
+    if (this.postfx.enabled) {
+      this.postfx.render(this.renderer, this.scene, this.camera, seconds, this.env.sunDirection, this.env.sunColor, { overlay: drawHand })
+    } else {
+      this.renderer.clear()
+      this.renderer.render(this.scene, this.camera)
+      if (this.alive && !this.thirdPerson) {
+        this.renderer.clearDepth()
+        drawHand()
+      }
     }
     this.hud.frame(now)
   }
@@ -931,6 +985,62 @@ export class Game {
       this.scene.remove(bolt)
       bolt.geometry.dispose()
     }, 250)
+  }
+
+  /** Applies the weather and shard-core changes carried by a new game view. */
+  private onGameState(before: GameView | null, next: GameView): void {
+    for (const team of next.teams) if (before?.teams.find((t) => t.team === team.team)?.bed && !team.bed) this.shatterCore(team.team)
+    const kind = next.weather?.kind ?? null
+    if (kind !== this.weatherKind) {
+      this.weatherKind = kind
+      this.weatherFx.set(kind, this.scene, this.renderer, this.sky, this.env.skyMiddle)
+      if (kind) this.hud.toast(kind === 'storm' ? 'Shardstorm: generators run at double speed' : 'Meteor shower: keep moving')
+    }
+    if (next.mode === 'sandbox') return
+    if (next.phase !== 'ended') this.awardedRound = false
+    if (!this.awardedRound && next.phase === 'ended' && this.self?.team) {
+      this.awardedRound = true
+      this.award(next.winner === this.self.team ? 'win' : 'loss')
+    }
+  }
+
+  /** Shards and XP as kills, finals and cores land; the round result pays out once. */
+  private syncStats(stats: SelfView['stats']): void {
+    if (this.gameView?.mode === 'sandbox' || this.mode.world === 'sandbox') {
+      this.statsSeen = { ...stats }
+      return
+    }
+    const kills = stats.kills - this.statsSeen.kills
+    const finals = stats.finals - this.statsSeen.finals
+    const beds = stats.beds - this.statsSeen.beds
+    if (kills < 0 || finals < 0 || beds < 0 || stats.deaths < this.statsSeen.deaths) {
+      this.statsSeen = { ...stats }
+      return
+    }
+    if (kills > 0) this.award('kill', kills)
+    if (finals > 0) this.award('final', finals)
+    if (beds > 0) this.award('bed', beds)
+    this.statsSeen = { ...stats }
+  }
+
+  private award(kind: 'kill' | 'final' | 'bed' | 'win' | 'loss', times = 1): void {
+    if (this.mode.world === 'sandbox') return
+    const before = levelInfo(this.profile.xp).level
+    this.profile = grant(this.profile, kind, times)
+    saveProfile(this.profile)
+    const after = levelInfo(this.profile.xp)
+    this.hud.toast(`+${REWARDS[kind].shards * times} shards${after.level > before ? ` · Level ${after.level}!` : ''}`)
+  }
+
+  /** A broken core throws coloured shards and shakes the view. */
+  private shatterCore(team: TeamId): void {
+    const base = this.map?.bases.find((b) => b.team === team)
+    if (!base) return
+    const x = base.bed.x + 0.5 + base.bed.dx / 2
+    const y = base.bed.y + 0.9
+    const z = base.bed.z + 0.5 + base.bed.dz / 2
+    for (const color of [TEAM_COLORS[team], '#ffffff', '#bfe9ff']) this.particles.burst(x, y + 0.7, z, color, 24, 1.1, 7)
+    this.shake = Math.max(this.shake, 0.55)
   }
 
   /** The latest server tick heard. */

@@ -1,4 +1,4 @@
-# Buffcraft: a voxel bed-wars game and engine
+# SKYSHARD: a voxel bed-wars game and engine
 
 A complete bed-wars game in the browser and on the desktop: four teams on
 floating islands, beds to defend, forges and diamond and emerald generators,
@@ -10,6 +10,21 @@ with a station for every mechanic. It
 runs on Freebuff Sites with browser-hosted casual multiplayer over managed
 realtime, offline in the page against bots, on an optional authoritative Node
 server, or as an Electron app.
+
+What makes it SKYSHARD rather than a stock bed-wars game:
+
+- **Shard cores.** Each bed is crowned by a floating team-coloured crystal.
+  Shattering one scatters three emerald shards around the base and gives the
+  breaking team a 20-second speed and jump rush.
+- **Arena weather.** A shardstorm darkens the sky, brings rain and lightning,
+  and doubles every generator for 75 seconds. A meteor shower then drops
+  shard meteors that break player blocks and hurt anyone near the impact.
+  Try either from the sandbox with `/weather storm` and `/weather meteor`.
+- **Progression.** Kills, finals, shattered cores and wins pay shards and XP.
+  Shards buy capes, trails and kill effects in the Wardrobe, and the Progress
+  window tracks level and lifetime stats.
+- **Shader presets.** Vivid, Cinematic or Off in Settings, Video, on top of
+  bloom, sun shafts, cloud shadows, colour grading and an anamorphic flare.
 
 It is built as a small game-agnostic voxel engine (`src/engine/`) plus the
 bed-wars game on top (`src/games/bedwars/`), so the engine carries over to

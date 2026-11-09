@@ -100,6 +100,14 @@ export interface TeamView {
   eliminated: boolean
 }
 
+export type WeatherKind = 'storm' | 'meteor'
+
+/** An arena weather event and the ticks left on it, as of `clockTick`. */
+export interface WeatherView {
+  kind: WeatherKind
+  left: number
+}
+
 export interface GameView {
   phase: Phase
   mode: GameRules['mode']
@@ -111,6 +119,7 @@ export interface GameView {
   host: number | null
   bots: boolean
   winner: TeamId | 'draw' | null
+  weather: WeatherView | null
 }
 
 export interface SelfView {
@@ -253,6 +262,8 @@ function writeGame(w: ByteWriter, g: GameView) {
   for (const t of g.teams) w.string(t.team).bool(t.bed).uint(t.players).uint(t.alive).bool(t.eliminated)
   w.uint(g.host === null ? 0 : g.host + 1)
   w.bool(g.bots).stringOrNull(g.winner)
+  w.stringOrNull(g.weather?.kind ?? null)
+  if (g.weather) w.int(g.weather.left)
 }
 
 function readGame(r: ByteReader): GameView {
@@ -264,7 +275,11 @@ function readGame(r: ByteReader): GameView {
   const next = label === null ? null : { label, in: r.int() }
   const teams: TeamView[] = Array.from({ length: r.uint() }, () => ({ team: r.string() as TeamId, bed: r.bool(), players: r.uint(), alive: r.uint(), eliminated: r.bool() }))
   const host = r.uint()
-  return { phase, mode, clock, clockTick, next, teams, host: host === 0 ? null : host - 1, bots: r.bool(), winner: r.stringOrNull() as GameView['winner'] }
+  const bots = r.bool()
+  const winner = r.stringOrNull() as GameView['winner']
+  const weatherKind = r.stringOrNull() as WeatherKind | null
+  const weather = weatherKind === null ? null : { kind: weatherKind, left: r.int() }
+  return { phase, mode, clock, clockTick, next, teams, host: host === 0 ? null : host - 1, bots, winner, weather }
 }
 
 function encodeTick(m: Extract<ServerMessage, { t: 'tick' }>): Bytes {

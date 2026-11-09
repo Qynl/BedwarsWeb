@@ -90,6 +90,7 @@ export function openSettings(host: HTMLElement, initial: Settings, onChange: (s:
         return [
           slider('Render distance', 'renderDistance', 60, 300, 10, `${settings.renderDistance} blocks`, 'How far you see before fog. Lower is faster on slow machines.'),
           choice('Quality', 'quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], 'Rendering resolution. Low draws fewer pixels for a faster frame rate.'),
+          choice('Shaders', 'shaderPreset', [['vivid', 'Vivid'], ['cinematic', 'Cinematic'], ['off', 'Off']], 'Vivid: punchy colour, strong bloom and sun shafts. Cinematic: softer colour, deeper shadows and more glow. Off gives the plainest, fastest picture.'),
           `<div class="setting"><div><b>Full screen</b><p>Also F11 in the desktop app.</p></div><button class="btn small-btn" data-act="fullscreen">${document.fullscreenElement ? 'Leave' : 'Enter'}</button></div>`,
         ].join('')
       case 'audio':

@@ -2,6 +2,7 @@ import { AmbientLight, DirectionalLight, PerspectiveCamera, Scene, SRGBColorSpac
 import type { TeamId } from '../blocks'
 import { CAPES, DEFAULT_LOOK, decodeLook, encodeLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, KILL_EFFECTS, OUTFIT_COLORS, OUTFITS, randomLook, SKIN_TONES, TRAILS, type Look } from '../look'
 import { Avatar } from './avatar'
+import { buyCosmetic, cosmeticPrice, isUnlocked, levelInfo, loadProfile, saveProfile, type CosmeticField } from './profile'
 
 const STORAGE_KEY = 'look'
 
@@ -25,6 +26,8 @@ export function saveLook(look: Look): void {
  */
 export function openWardrobe(host: HTMLElement, team: TeamId | null, onChange: (look: Look) => void, onClose: () => void): () => void {
   let look = loadLook()
+  let profile = loadProfile()
+  let note = ''
   const overlay = document.createElement('div')
   overlay.className = 'modal show settings-overlay'
   host.append(overlay)
@@ -61,33 +64,70 @@ export function openWardrobe(host: HTMLElement, team: TeamId | null, onChange: (
 
   const swatches = (key: keyof Look, colors: string[]) =>
     `<div class="swatches">${colors.map((c, i) => `<button class="swatch${look[key] === i ? ' chosen' : ''}" style="background:${c}" data-pick="${key}" data-value="${i}" aria-label="${key} ${i + 1}"></button>`).join('')}</div>`
-  const buttons = (key: keyof Look, names: readonly string[]) =>
-    `<div class="choice wrap">${names.map((n, i) => `<button class="btn small-btn${look[key] === i ? ' chosen' : ''}" data-pick="${key}" data-value="${i}">${n}</button>`).join('')}</div>`
+  const buttons = (key: keyof Look, names: readonly string[], field?: CosmeticField) =>
+    `<div class="choice wrap">${names
+      .map((n, i) => {
+        const owned = field ? isUnlocked(profile, field, i) : true
+        const price = field ? cosmeticPrice(field, i) : 0
+        return `<button class="btn small-btn${look[key] === i ? ' chosen' : ''}${owned ? '' : ' locked'}" data-pick="${key}" data-value="${i}"${owned ? '' : ` data-buy-field="${field}"`}>${n}${owned ? '' : `<span class="price">${price}</span>`}</button>`
+      })
+      .join('')}</div>`
   const row = (label: string, body: string) => `<div class="setting"><div><b>${label}</b></div>${body}</div>`
+  /** A random choice the player already owns, so "Surprise me" never equips something locked. */
+  const ownedRandom = (field: CosmeticField, count: number) => {
+    const options = Array.from({ length: count }, (_, i) => i).filter((i) => isUnlocked(profile, field, i))
+    return options[Math.floor(Math.random() * options.length)] ?? 0
+  }
 
   function render() {
     overlay.innerHTML = `<div class="window settings-window wardrobe">
       <div class="window-head"><h2>Wardrobe</h2><button class="btn ghost" data-close>Done</button></div>
+      <div class="profile-strip"><span><b>Level ${levelInfo(profile.xp).level}</b> · ${profile.shards} shards</span><span class="muted small">Earn shards in arena rounds</span></div>
       <div class="wardrobe-body">
         <div class="preview"></div>
         <div class="settings-body">
+          <p class="note">${note || 'Locked items cost shards; click one to buy and wear it.'}</p>
           ${row('Skin', swatches('skin', SKIN_TONES))}
           ${row('Hair', buttons('hairStyle', HAIR_STYLES))}
           ${row('Hair colour', swatches('hairColor', HAIR_COLORS))}
           ${row('Eyes', swatches('eyes', EYE_COLORS))}
           ${row('Outfit', buttons('outfit', OUTFITS))}
           ${row('Outfit colour', swatches('outfitColor', OUTFIT_COLORS))}
-          ${row('Cape', buttons('cape', CAPES))}
-          ${row('Trail', buttons('trail', TRAILS))}
-          ${row('Kill effect', buttons('killEffect', KILL_EFFECTS))}
+          ${row('Cape', buttons('cape', CAPES, 'cape'))}
+          ${row('Trail', buttons('trail', TRAILS, 'trail'))}
+          ${row('Kill effect', buttons('killEffect', KILL_EFFECTS, 'killEffect'))}
         </div>
       </div>
       <div class="row"><button class="btn" data-random>Surprise me</button><p class="muted small">Your team colour shows on your armour, armbands and team cape.</p></div>
     </div>`
     overlay.querySelector('.preview')!.append(renderer.domElement)
     overlay.querySelector('[data-close]')!.addEventListener('click', close)
-    overlay.querySelector('[data-random]')!.addEventListener('click', () => update(randomLook()))
-    overlay.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) => b.addEventListener('click', () => update({ ...look, [b.dataset.pick as keyof Look]: Number(b.dataset.value) })))
+    overlay.querySelector('[data-random]')!.addEventListener('click', () => {
+      const next = randomLook()
+      next.cape = ownedRandom('cape', CAPES.length)
+      next.trail = ownedRandom('trail', TRAILS.length)
+      next.killEffect = ownedRandom('killEffect', KILL_EFFECTS.length)
+      update(next)
+    })
+    overlay.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const field = b.dataset.buyField as CosmeticField | undefined
+        const index = Number(b.dataset.value)
+        if (field && !isUnlocked(profile, field, index)) {
+          const price = cosmeticPrice(field, index)
+          const bought = buyCosmetic(profile, field, index)
+          if (!bought) {
+            note = `Need ${price} shards for that.`
+            render()
+            return
+          }
+          profile = bought
+          saveProfile(profile)
+          note = `Unlocked for ${price} shards.`
+        }
+        update({ ...look, [b.dataset.pick as keyof Look]: index })
+      }),
+    )
     const canvas = renderer.domElement
     canvas.onpointerdown = (e) => {
       dragging = true

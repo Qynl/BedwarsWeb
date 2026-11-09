@@ -52,6 +52,8 @@ export class Hud {
   private modal = el('div', 'modal')
   private help = el('div', 'help')
   private toasts = el('div', 'toasts')
+  private weather = el('div', 'weather-banner')
+  private flash = el('div', 'lightning-flash')
   private vignette = el('div', 'vignette')
   private error = el('div', 'error-screen')
   private summary = el('div', 'summary panel')
@@ -85,7 +87,7 @@ export class Hud {
     const chat = el('div', 'chat')
     chat.append(this.chatLog, this.chatInput)
     this.renderPause()
-    this.root.append(this.vignette, this.direction, this.crosshair, this.marker, this.charge, this.fps, this.sidebar, this.feed, chat, this.title, this.center, this.backdrop, this.lobby, this.scoreboard, this.debug, bottom, this.toasts, this.summary, this.modal, this.help, this.loading, this.error)
+    this.root.append(this.vignette, this.direction, this.crosshair, this.marker, this.charge, this.fps, this.sidebar, this.feed, chat, this.title, this.weather, this.center, this.backdrop, this.lobby, this.scoreboard, this.debug, bottom, this.toasts, this.summary, this.modal, this.help, this.loading, this.error, this.flash)
     this.backdrop.addEventListener('click', () => this.game.lock())
     container.append(this.root)
 
@@ -219,6 +221,11 @@ export class Hud {
   hurtFlash() {
     this.restart(this.vignette, 'hit')
     this.restart(this.hearts, 'shake')
+  }
+
+  /** A white sheet across the screen for a storm's lightning. */
+  lightningFlash() {
+    this.restart(this.flash, 'show')
   }
 
   /** The X around the crosshair when your hit lands; yellow for a critical hit. */
@@ -370,6 +377,7 @@ export class Hud {
     this.renderSidebar()
     this.renderLobby()
     this.renderCenter()
+    this.renderWeather()
     if (this.scoreboard.classList.contains('show')) this.renderScoreboard()
     if (this.modalKind) this.renderModal()
     this.crosshair.classList.toggle('hidden', !self.alive)
@@ -426,14 +434,14 @@ export class Hud {
     if (view.mode === 'arena' && view.phase !== 'waiting' && view.phase !== 'countdown') {
       rows.push('<div class="teams">')
       for (const t of view.teams) {
-        const state = t.eliminated ? '<span class="x">out</span>' : t.bed ? '<span class="ok">bed</span>' : `<span class="warn">${t.alive}</span>`
+        const state = t.eliminated ? '<span class="x">out</span>' : t.bed ? '<span class="ok">core</span>' : `<span class="warn">${t.alive}</span>`
         rows.push(`<div class="team-row${t.team === self.team ? ' mine' : ''}"><i style="background:${TEAM_COLORS[t.team]}"></i>${TEAM_NAMES[t.team]}${t.team === self.team ? ' (you)' : ''}<span class="right">${state}</span></div>`)
       }
       rows.push('</div>')
     }
     const res = ['iron', 'gold', 'diamond', 'emerald'].map((r) => `<span class="res"><i style="background:${RESOURCE_COLORS[r]}"></i>${countItem(self.inventory, r)}</span>`).join('')
     rows.push(`<div class="resources">${res}</div>`)
-    if (view.mode === 'arena') rows.push(`<div class="line muted small">Kills ${self.stats.kills}, finals ${self.stats.finals}, beds ${self.stats.beds}</div>`)
+    if (view.mode === 'arena') rows.push(`<div class="line muted small">Kills ${self.stats.kills}, finals ${self.stats.finals}, cores ${self.stats.beds}</div>`)
     const html = rows.join('')
     if (this.sidebar.dataset.html !== html) {
       this.sidebar.dataset.html = html
@@ -514,6 +522,29 @@ export class Hud {
     this.lobby.querySelector('[data-act="start"]')?.addEventListener('click', () => g.send({ t: 'start' }))
     this.lobby.querySelector('[data-act="bots"]')?.addEventListener('click', () => g.send({ t: 'settings', bots: !view.bots }))
     this.lobby.querySelectorAll<HTMLButtonElement>('[data-level]').forEach((b) => b.addEventListener('click', () => g.send({ t: 'settings', bots: view.bots, botLevel: b.dataset.level as BotLevel })))
+  }
+
+  /** The storm or meteor banner, with the ticks left on it. */
+  private renderWeather() {
+    const view = this.game.gameView
+    const w = view?.weather
+    if (!w) {
+      if (this.weather.dataset.key !== '') {
+        this.weather.dataset.key = ''
+        this.weather.innerHTML = ''
+        this.weather.classList.remove('show')
+      }
+      return
+    }
+    const left = Math.max(0, w.left - (this.game.tickNow() - (view?.clockTick ?? 0)))
+    const seconds = Math.ceil(left / TPS)
+    const key = `${w.kind}:${seconds}`
+    if (this.weather.dataset.key === key) return
+    this.weather.dataset.key = key
+    const label = w.kind === 'storm' ? 'SHARDSTORM' : 'METEOR SHOWER'
+    const sub = w.kind === 'storm' ? 'generators ×2' : 'shards falling'
+    this.weather.innerHTML = `<b>${label}</b><span>${sub} · ${seconds}s</span>`
+    this.weather.classList.add('show')
   }
 
   private renderCenter() {

@@ -28,7 +28,7 @@ import type { MapDef, MapMeta } from './maps/types'
 import type { RoomSummary } from '../../engine/net/room'
 import type { RoomParams } from './server'
 import { collides, groundBelow, lookDirection, playerBox, stepDrop, stepMovement, type MoveInput, type Mover } from '../../engine/physics'
-import type { ClientMessage, DropView, EventKind, GameView, Phase, PlayerDelta, PlayerView, SelfView, ServerMessage } from './protocol'
+import type { ClientMessage, DropView, EventKind, GameView, Phase, PlayerDelta, PlayerView, SelfView, ServerMessage, WeatherKind } from './protocol'
 import { raycastBlock } from '../../engine/raycast'
 import { rng } from '../../engine/random'
 import { toBase64 } from '../../engine/world'
@@ -38,8 +38,11 @@ import {
   GENERATOR_CAP,
   GENERATOR_INTERVAL,
   HEAL_POOL_INTERVAL,
+  METEOR_INTERVAL,
+  METEOR_TICKS,
   REGEN_DELAY,
   REGEN_INTERVAL,
+  STORM_TICKS,
   BOT_LEVELS,
   type BotLevel,
   type GameRules,
@@ -189,6 +192,12 @@ export class Room {
   private diamondTier = 0
   private emeraldTier = 0
   private bedRegenAt: number | null = null
+  /** Arena weather and the tick it ends on. */
+  private weather: WeatherKind | null = null
+  private weatherUntil = 0
+  private nextMeteorAt = 0
+  /** Unique negative drop sources for the shards a broken core scatters. */
+  private coreSource = -1000
   private unsubscribeWorld: (() => void) | null = null
   private readonly createMap: () => MapDef
 
@@ -711,7 +720,7 @@ export class Room {
   }
 
   private command(p: Player, [name, ...args]: string[]): void {
-    if (name === 'help') return this.event(p, 'system', this.rules.cheats ? 'Commands: /give <item> [count], /tp <x> <y> <z>, /heal, /kit, /kill, /bot [n] [easy|normal|hard|expert], /nobots, /start' : 'Commands: /start (host)')
+    if (name === 'help') return this.event(p, 'system', this.rules.cheats ? 'Commands: /give <item> [count], /tp <x> <y> <z>, /heal, /kit, /kill, /bot [n] [easy|normal|hard|expert], /nobots, /weather <storm|meteor|clear>, /start' : 'Commands: /start (host)')
     if (name === 'start') return void (p.id === this.hostId && this.phase === 'waiting' && this.beginCountdown(true))
     if (!this.rules.cheats) return this.event(p, 'error', 'Commands are off in this room.')
     switch (name) {
@@ -753,6 +762,20 @@ export class Room {
       case 'nobots':
         for (const q of [...this.players.values()]) if (q.brain && !q.home) this.disconnect(q.id)
         return
+      case 'weather': {
+        const kind = args[0]
+        if (kind !== 'storm' && kind !== 'meteor') {
+          this.weather = null
+          this.weatherUntil = 0
+          this.broadcastEvent('system', 'The weather clears.')
+          return
+        }
+        this.weather = kind
+        this.weatherUntil = this.tickCount + (kind === 'storm' ? STORM_TICKS : METEOR_TICKS)
+        this.nextMeteorAt = this.tickCount + 2 * TPS
+        this.broadcastEvent('title', kind === 'storm' ? 'Shardstorm' : 'Meteor shower', 'Sandbox weather')
+        return
+      }
       default:
         this.event(p, 'error', `Unknown command /${name}`)
     }
@@ -890,10 +913,37 @@ export class Room {
     if (!state) return
     state.bed = false
     by.stats.beds++
-    this.broadcast({ t: 'event', kind: 'bed', text: `${TEAM_NAMES[team]} bed was destroyed by ${by.name}!`, team })
+    // The core shatters into shards: emeralds worth fighting over, scattered around the bed.
+    const base = this.map.bases.find((b) => b.team === team)
+    if (base)
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2 + this.random() * 0.6
+        this.drops.push({
+          id: this.nextDropId++,
+          item: 'emerald',
+          count: 1,
+          x: base.bed.x + 0.5 + Math.cos(angle) * 1.8,
+          y: base.bed.y + 0.9,
+          z: base.bed.z + 0.5 + Math.sin(angle) * 1.8,
+          vx: Math.cos(angle) * 0.06,
+          vy: 0.16,
+          vz: Math.sin(angle) * 0.06,
+          source: this.coreSource--,
+          pickupAt: this.tickCount + 10,
+        })
+      }
+    this.broadcast({ t: 'event', kind: 'bed', text: `${TEAM_NAMES[team]} shard core was shattered by ${by.name}!`, team })
     for (const q of this.players.values())
-      if (q.team === team) this.event(q, 'title', 'Bed destroyed', 'You will no longer respawn')
-      else if (!q.brain) this.event(q, 'title', `${TEAM_NAMES[team]} bed destroyed`, `by ${by.name}`)
+      if (q.team === team) this.event(q, 'title', 'Shard core shattered', 'You will no longer respawn')
+      else if (!q.brain) this.event(q, 'title', `${TEAM_NAMES[team]} core shattered`, `by ${by.name}`)
+    // Breaking a core feeds the breaker's team a short rush.
+    const rush = this.tickCount + 20 * TPS
+    for (const q of this.players.values())
+      if (q.team === by.team) {
+        q.effects.speed = Math.max(q.effects.speed, rush)
+        q.effects.jump = Math.max(q.effects.jump, rush)
+      }
+    if (by.team) this.event(by, 'system', 'Shard rush: 20 seconds of speed and jump boost.')
     if (this.rules.mode === 'sandbox') this.bedRegenAt = this.tickCount + 10 * TPS
   }
 
@@ -978,6 +1028,8 @@ export class Room {
     this.phase = 'playing'
     this.phaseStart = this.tickCount
     this.timelineIndex = 0
+    this.weather = null
+    this.weatherUntil = 0
     for (const g of this.generators) g.next = this.tickCount + 20
     for (const p of this.players.values()) if (p.team) this.spawn(p)
     this.broadcastEvent('title', 'Protect your bed', 'Destroy enemy beds and be the last team standing')
@@ -1029,6 +1081,8 @@ export class Room {
     this.pendingBlocks = []
     this.drops = []
     this.arsenal?.reset()
+    this.weather = null
+    this.weatherUntil = 0
     this.diamondTier = this.emeraldTier = 0
     this.teams = new Map(this.rules.teams.map((team) => [team, { team, bed: true, upgrades: { ...NO_UPGRADES }, eliminated: false }]))
     this.generators = this.map.generators.map((g) => ({ kind: g.kind, team: g.team, pos: [...g.pos], next: this.tickCount + 20 }))
@@ -1053,6 +1107,7 @@ export class Room {
     for (const p of this.players.values()) if (p.alive) this.history.record(p.id, this.tickCount, p)
     for (const p of this.players.values()) this.stepPlayer(p)
     if (this.phase === 'playing') this.arsenal.step()
+    if (this.phase === 'playing') this.stepWeather()
     this.stepGenerators()
     this.stepDrops()
     this.stepPhase()
@@ -1098,7 +1153,9 @@ export class Room {
       const forge = g.team ? (this.teams.get(g.team)?.upgrades.forge ?? 0) : 0
       const interval =
         g.kind === 'diamond' ? GENERATOR_INTERVAL.diamond[this.diamondTier] : g.kind === 'emerald' ? GENERATOR_INTERVAL.emerald[this.emeraldTier] : GENERATOR_INTERVAL[g.kind][forge]
-      g.next = this.tickCount + interval
+      // A shardstorm doubles every generator's pace for as long as it lasts.
+      const pace = this.weather === 'storm' ? 0.5 : 1
+      g.next = this.tickCount + Math.max(1, Math.round(interval * pace))
       if (g.team && this.teams.get(g.team)?.eliminated && this.rules.mode === 'arena') continue
       this.spawnDrop(index, g.kind, g.pos)
       // Forge level 3 and up also makes emeralds, on the iron generator's schedule.
@@ -1196,8 +1253,53 @@ export class Room {
     }
   }
 
+  /** Ends expired weather and drops the next meteor while a shower is running. */
+  private stepWeather(): void {
+    if (!this.weather) return
+    if (this.tickCount >= this.weatherUntil) {
+      const ended = this.weather
+      this.weather = null
+      this.broadcastEvent('system', ended === 'storm' ? 'The shardstorm passes and the sky clears.' : 'The last shard meteor has fallen.')
+      return
+    }
+    if (this.weather === 'meteor' && this.tickCount >= this.nextMeteorAt) {
+      this.nextMeteorAt = this.tickCount + METEOR_INTERVAL
+      this.meteor()
+    }
+  }
+
+  /** A falling shard meteor: breaks player blocks, hurts anyone near the impact, and lights up the sky. */
+  private meteor(): void {
+    const centre = this.map.lobby?.spawn ?? this.map.bases[0]?.center ?? [0, 0, 0]
+    const y = this.map.bases[0]?.bed.y ?? 40
+    const x = Math.floor(centre[0] + (this.random() - 0.5) * 44)
+    const z = Math.floor(centre[2] + (this.random() - 0.5) * 44)
+    for (let dx = -2; dx <= 2; dx++)
+      for (let dz = -2; dz <= 2; dz++)
+        for (let dy = -1; dy <= 2; dy++) {
+          if (dx * dx + dz * dz > 6) continue
+          if (this.world.isPlaced(x + dx, y + dy, z + dz)) this.world.set(x + dx, y + dy, z + dz, AIR)
+        }
+    for (const p of this.players.values()) {
+      if (!p.alive || !p.team) continue
+      const d = Math.hypot(p.x - x, p.z - z)
+      if (d > 5 || Math.abs(p.y - y) > 8) continue
+      this.hurt(p, Math.max(1, Math.round(7 * (1 - d / 6))), 'explosion')
+    }
+    this.broadcast({ t: 'explosion', x: x + 0.5, y: y + 0.5, z: z + 0.5, power: 3 })
+    this.broadcastEvent('system', 'A shard meteor slams into the arena!')
+  }
+
   private runTimeline(kind: string, label: string): void {
     switch (kind) {
+      case 'storm':
+      case 'meteor': {
+        this.weather = kind
+        this.weatherUntil = this.tickCount + (kind === 'storm' ? STORM_TICKS : METEOR_TICKS)
+        this.nextMeteorAt = this.tickCount + 3 * TPS
+        this.broadcastEvent('title', kind === 'storm' ? 'Shardstorm' : 'Meteor shower', kind === 'storm' ? 'Generators run twice as fast' : 'Keep moving: shards are falling')
+        return
+      }
       case 'diamond-2':
       case 'diamond-3':
         this.diamondTier = kind === 'diamond-2' ? 1 : 2
@@ -1331,6 +1433,7 @@ export class Room {
       host: this.hostId,
       bots: this.botsEnabled,
       winner: this.winner,
+      weather: this.weather ? { kind: this.weather, left: Math.max(0, this.weatherUntil - this.tickCount) } : null,
     }
   }
 

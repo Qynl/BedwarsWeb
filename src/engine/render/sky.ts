@@ -1,4 +1,4 @@
-import { BufferGeometry, Float32BufferAttribute, Group, Mesh, SphereGeometry, type ShaderMaterial } from 'three'
+import { BufferGeometry, Color, Float32BufferAttribute, Group, Mesh, SphereGeometry, type ShaderMaterial } from 'three'
 import { hash2 } from '../random'
 import { createCloudMaterial, createSkyMaterial, type Environment } from './shaders'
 
@@ -15,9 +15,24 @@ export function createSky(env: Environment, cloudY: number, center: [number, num
   clouds.renderOrder = 2
   const root = new Group()
   root.add(group, clouds)
+  const domeMaterial = dome.material as ShaderMaterial
+  const cloudMaterial = clouds.material as ShaderMaterial
+  const base = { top: env.skyTop.clone(), middle: env.skyMiddle.clone(), bottom: env.skyBottom.clone() }
   return {
     root,
-    cloudMaterial: clouds.material as ShaderMaterial,
+    cloudMaterial,
+    /** Recolours the dome and clouds for arena weather. Null restores the clear sky. */
+    setWeather(kind: string | null) {
+      const t = kind === null ? 0 : kind === 'meteor' ? 0.8 : 1
+      const top = kind === 'meteor' ? new Color('#3a2024') : new Color('#1b2b3f')
+      const middle = kind === 'meteor' ? new Color('#8a4a3a') : new Color('#55677d')
+      const bottom = kind === 'meteor' ? new Color('#201418') : new Color('#111a26')
+      domeMaterial.uniforms.uSkyTop.value = base.top.clone().lerp(top, t)
+      domeMaterial.uniforms.uSkyMiddle.value = base.middle.clone().lerp(middle, t)
+      domeMaterial.uniforms.uSkyBottom.value = base.bottom.clone().lerp(bottom, t)
+      cloudMaterial.uniforms.uCloudColor.value = new Color(1, 1, 1).lerp(new Color(kind === 'meteor' ? '#5a3a3a' : '#7c8ba1'), t)
+      cloudMaterial.uniforms.uCloudAlpha.value = 0.82 + t * 0.16
+    },
     update(cameraX: number, cameraY: number, cameraZ: number, seconds: number) {
       dome.position.set(cameraX, cameraY, cameraZ)
       clouds.position.x = center[0] - 192 + ((seconds * 0.6) % 48)
