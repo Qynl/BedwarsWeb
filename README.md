@@ -9,7 +9,8 @@ team chat, sound effects and particles made in code, and a practice sandbox
 with a station for every mechanic. It
 runs on Freebuff Sites with browser-hosted casual multiplayer over managed
 realtime, offline in the page against bots, on an optional authoritative Node
-server, or as an Electron app.
+server, or as an Electron app. A real Minecraft: Java Edition client can also
+join a live room through the optional Java gateway (`bun run minecraft`).
 
 On the Node server there is no game menu to fight through: you join the
 server and spawn in a shared voxel **hub**, walk through the BEDWARS gate, up
@@ -54,6 +55,7 @@ bun run package        # installers in release/: .dmg/.zip on macOS, .exe on Win
 bun run build          # dist/client + dist/buffcraft/index.js, for Freebuff Sites
 bun run build:node     # dist/node-client + dist/server/main.js, for Node/Electron
 bun run start          # serve the build on :3000 (see "Hosting for friends" below)
+bun run minecraft      # Java Edition gateway on :25565 (see "Real Minecraft" below)
 ```
 
 Checks:
@@ -213,6 +215,64 @@ Game (mouse sensitivity, invert, field of view, sprint mode, double-tap
 sprint, view bobbing, frame counter), Controls, Video (render distance,
 quality, full screen) and Audio (volume). They apply at once and are kept in
 the browser's (or the desktop app's) local storage.
+
+## Real Minecraft (Java Edition)
+
+Yes: a real Minecraft: Java Edition client can join the game. `bun run
+minecraft` opens a small Java Edition server that joins a normal SKYSHARD room
+as one more player and translates the world, entities and actions in both
+directions. It is a bridge, not a proxy: the same bots and browser players are
+in the round, and the Java player takes a bot seat like anyone else.
+
+Requirements: the game server is running (for example
+`bun run build:node && node dist/server/main.js`, or `bun run dev:node` with
+`MC_GAME_URL` pointing at its port), Bun is installed, and the client uses
+**Minecraft Java Edition 1.21.8** — the version the gateway speaks. Other client
+versions show as incompatible unless you set `MC_VERSION` to a version both the
+client and `minecraft-protocol` support.
+
+```sh
+bun run minecraft
+# Minecraft → Multiplayer → Direct Connection → localhost:25565
+```
+
+The listener is **offline mode**: it does not check Mojang sessions, so any
+username works and no password is ever asked for. (You still need a legitimate
+launcher and account to run the Minecraft client itself.) It defaults to
+`127.0.0.1`; set `MC_HOST=0.0.0.0` only on a trusted LAN, because anyone who can
+reach the port can use any name.
+
+Useful environment variables:
+
+```sh
+MC_PORT=25565                  # TCP port
+MC_HOST=0.0.0.0                # listen on the LAN instead of localhost
+MC_VERSION=1.21.8              # must match the client
+MC_GAME_URL='ws://127.0.0.1:3000/game?world=arena&room=mc&auto=1'
+```
+
+The gateway replaces any `name` in `MC_GAME_URL` with the Java player's own
+name, so one listener can serve several clients at once.
+
+What crosses the bridge: terrain, sky light and heightmaps; bots and browser
+players as living entities; player movement, look, sneak and sprint; health and
+deaths; the hotbar/inventory and team-coloured wool; block placing and
+breaking; chat, team chat and system messages; and the round clock/events. The
+shop is available from Java chat: `/shop` lists offer ids, `/buy wool` buys,
+and `/upgrade protection` buys a team upgrade when you are at the keeper.
+`/tp x y z` and the other sandbox commands work where the room allows them.
+
+It is intentionally a one-version, offline-mode bridge, and the listener must
+be reachable over TCP. The hosted Sites/Cloud preview only forwards HTTP and
+WebSocket traffic, so for a friend outside your machine run the Node server and
+the gateway on a host with TCP `25565` exposed (or use a LAN/VPN). The Java
+gateway is not a way to proxy Hypixel or any other remote server; it hosts
+SKYSHARD's own rooms. Final-death spectator flow and the shop GUI are simpler
+than in the browser; the command fallbacks above cover the shop.
+
+The translation lives in `src/games/bedwars/minecraft.ts`; the CLI is
+`scripts/minecraft.ts`; `tests/minecraft.test.ts` logs in with a protocol
+client and checks the chunks, kit and chat round trip.
 
 ## Maps
 
