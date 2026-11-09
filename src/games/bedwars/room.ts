@@ -18,7 +18,7 @@ import {
   SPAWN_PROTECTION_TICKS,
   TPS,
 } from './constants'
-import { addItem, canFit, countItem, emptyInventory, HOTBAR, INVENTORY_SIZE, removeFromSlot, removeItem, replaceItem, swapSlots, type Inventory } from '../../engine/inventory'
+import { addItem, canFit, countItem, emptyInventory, HOTBAR, INVENTORY_SIZE, removeFromSlot, removeItem, replaceItem, swapSlots, type Inventory, type Slot } from '../../engine/inventory'
 import { ARMOR_ORDER, type ArmorTier, AXES, type Effect, item, JUMP_BOOST, PICKAXES, placedBlock, RESOURCES, SPEED_BOOST } from './items'
 import { Arsenal } from './arsenal'
 import { decodeLook, DEFAULT_LOOK, encodeLook, randomLook } from './look'
@@ -29,7 +29,7 @@ import type { MapDef, MapMeta } from './maps/types'
 import type { RoomSummary } from '../../engine/net/room'
 import type { RoomParams } from './server'
 import { collides, groundBelow, lookDirection, playerBox, stepDrop, stepMovement, type MoveInput, type Mover } from '../../engine/physics'
-import type { ClientMessage, DropView, EventKind, GameView, Phase, PlayerDelta, PlayerView, SelfView, ServerMessage, WeatherKind } from './protocol'
+import type { ChestKind, ChestRef, ClientMessage, DropView, EventKind, GameView, Phase, PlayerDelta, PlayerView, SelfView, ServerMessage, WeatherKind } from './protocol'
 import { raycastBlock } from '../../engine/raycast'
 import { rng } from '../../engine/random'
 import { toBase64 } from '../../engine/world'
@@ -58,6 +58,10 @@ export type Sink = (msg: ServerMessage) => void
 export interface Brain {
   think(room: Room, p: Player): MoveInput
 }
+
+/** Chests are 27 slots, like a vanilla single chest; both kinds share the layout. */
+export const CHEST_SIZE = 27
+export const emptyChest = (): (Slot | null)[] => Array.from({ length: CHEST_SIZE }, () => null)
 
 export interface Player extends Mover {
   id: number
@@ -106,6 +110,10 @@ export interface Player extends Mover {
   effects: Record<Effect, number>
   /** Cosmetics, as a validated look code. */
   look: string
+  /** This player's ender chest: survives deaths, cleared when a new round starts. */
+  chest: (Slot | null)[]
+  /** Which chest window the player has open, so the server knows where to send updates. */
+  chestOpen: ChestKind | null
 }
 
 export type DamageCause = 'melee' | 'fall' | 'arrow' | 'explosion'
@@ -115,6 +123,8 @@ interface TeamState {
   bed: boolean
   upgrades: TeamUpgrades
   eliminated: boolean
+  /** Everything the whole team has put in its chest at the base. */
+  chest: (Slot | null)[]
 }
 
 interface Generator {
@@ -278,6 +288,8 @@ export class Room {
       effects: { speed: 0, jump: 0, invisible: 0 },
       // Bots dress at random (their own stream, so looks never shift gameplay); people send theirs after joining.
       look: encodeLook(brain ? randomLook(rng(id * 7919)) : DEFAULT_LOOK),
+      chest: emptyChest(),
+      chestOpen: null,
     }
     this.players.set(id, p)
     if (!brain && this.hostId === null) this.hostId = id
@@ -291,8 +303,8 @@ export class Room {
       p.team = null
       if (!brain) {
         this.spawnInHub(p)
-        this.event(p, 'title', BRAND, 'Right-click a keeper or walk through the gate to play. B finds a match, Tab shows the player list.')
-        this.event(p, 'system', 'Welcome to the network. Right-click a keeper, walk through the BEDWARS gate, or press B to find a match. /list shows who is here.')
+        this.event(p, 'title', BRAND, 'Right-click a keeper or walk through the gate to play. B opens the map picker, Tab shows the player list.')
+        this.event(p, 'system', 'Welcome to the network. Right-click a keeper, walk through the BEDWARS gate, or press B to choose a map. /list shows who is here.')
       }
     } else if (this.rules.mode === 'sandbox') {
       p.team = brain ? p.team : 'red'
@@ -422,6 +434,12 @@ export class Room {
       case 'swap':
         if (Number.isInteger(msg.a) && Number.isInteger(msg.b) && msg.a < INVENTORY_SIZE && msg.b < INVENTORY_SIZE) swapSlots(p.inventory, msg.a, msg.b)
         return
+      case 'chest':
+        return this.onChestOpen(p, msg.x, msg.y, msg.z)
+      case 'chestSwap':
+        return this.onChestSwap(p, msg.kind, msg.a, msg.b)
+      case 'chestClose':
+        return this.closeChest(p)
       case 'team':
         return this.onTeam(p, msg.team)
       case 'start':
@@ -716,6 +734,66 @@ export class Room {
       if (q.team === team.team) this.event(q, 'system', `${p.name} bought ${def.name}${def.levels.length > 1 ? ` ${level + 1}` : ''}`)
   }
 
+  // Chests -----------------------------------------------------------------
+
+  /** The chest block at a cell, if the map placed one there. */
+  private chestSpot(x: number, y: number, z: number) {
+    return this.map.chests?.find((c) => c.x === x && c.y === y && c.z === z)
+  }
+
+  /** The storage a player's open window points at, or null if they may not use it. */
+  private chestStore(p: Player, kind: ChestKind): (Slot | null)[] | null {
+    if (kind === 'personal') return p.chest
+    const team = p.team ? this.teams.get(p.team) : undefined
+    return team?.chest ?? null
+  }
+
+  onChestOpen(p: Player, x: number, y: number, z: number): void {
+    if (![x, y, z].every(Number.isInteger) || !this.canAct(p)) return
+    const spot = this.chestSpot(x, y, z)
+    if (!spot) return
+    if (spot.kind === 'team' && spot.team !== p.team) return this.event(p, 'error', 'That is another team\'s chest.')
+    if (this.eyeDistance(p, x + 0.5, y + 0.5, z + 0.5) > BLOCK_REACH + REACH_SLACK) return
+    const slots = this.chestStore(p, spot.kind)
+    if (!slots) return
+    p.chestOpen = spot.kind
+    this.send(p, { t: 'chest', kind: spot.kind, slots })
+  }
+
+  onChestSwap(p: Player, kind: ChestKind, a: ChestRef, b: ChestRef): void {
+    if (!p.chestOpen || p.chestOpen !== kind || !a || !b) return
+    const chest = this.chestStore(p, kind)
+    if (!chest) return
+    const size = (side: string) => (side === 'chest' ? CHEST_SIZE : side === 'inventory' ? INVENTORY_SIZE : -1)
+    for (const ref of [a, b]) {
+      if (!Number.isInteger(ref.index) || ref.index < 0 || ref.index >= size(ref.side)) return
+    }
+    if (a.side === b.side && a.index === b.index) return
+    const read = (ref: ChestRef) => (ref.side === 'chest' ? chest[ref.index] : p.inventory[ref.index])
+    const write = (ref: ChestRef, slot: Slot | null) => {
+      if (ref.side === 'chest') chest[ref.index] = slot
+      else p.inventory[ref.index] = slot
+    }
+    const first = read(a)
+    write(a, read(b))
+    write(b, first)
+    this.sendChest(p)
+    if (kind === 'team' && p.team) for (const q of this.players.values()) if (q !== p && q.team === p.team && q.chestOpen === 'team') this.sendChest(q)
+  }
+
+  closeChest(p: Player): void {
+    if (!p.chestOpen) return
+    p.chestOpen = null
+    this.send(p, { t: 'chest', kind: null, slots: [] })
+  }
+
+  /** Pushes the open chest's contents to its viewer. */
+  private sendChest(p: Player): void {
+    if (!p.chestOpen) return
+    const slots = this.chestStore(p, p.chestOpen)
+    if (slots) this.send(p, { t: 'chest', kind: p.chestOpen, slots })
+  }
+
   private onTeam(p: Player, team: TeamId): void {
     if (this.phase !== 'waiting' && this.phase !== 'countdown') return
     if (!this.rules.teams.includes(team)) return
@@ -855,6 +933,7 @@ export class Room {
     p.dig = null
     p.shield = false
     p.drawStart = null
+    this.closeChest(p)
     p.effects = { speed: 0, jump: 0, invisible: 0 }
     p.health = 0
     p.stats.deaths++
@@ -1170,7 +1249,11 @@ export class Room {
     this.weather = null
     this.weatherUntil = 0
     this.diamondTier = this.emeraldTier = 0
-    this.teams = new Map(this.rules.teams.map((team) => [team, { team, bed: true, upgrades: { ...NO_UPGRADES }, eliminated: false }]))
+    this.teams = new Map(this.rules.teams.map((team) => [team, { team, bed: true, upgrades: { ...NO_UPGRADES }, eliminated: false, chest: emptyChest() }]))
+    for (const p of this.players.values()) {
+      this.closeChest(p)
+      p.chest = emptyChest()
+    }
     this.generators = this.map.generators.map((g) => ({ kind: g.kind, team: g.team, pos: [...g.pos], next: this.tickCount + 20 }))
     if (this.rules.mode === 'sandbox') {
       for (const n of this.map.npcs) {

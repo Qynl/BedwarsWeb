@@ -1,4 +1,4 @@
-import { GLASS, PLANKS, TEAMS, type TeamId } from '../blocks'
+import { CHEST, ENDER_CHEST, GLASS, PLANKS, TEAMS, type TeamId } from '../blocks'
 import { placeBed } from '../beds'
 import type { Box } from '../../../engine/physics'
 import { rng } from '../../../engine/random'
@@ -8,7 +8,7 @@ import { buildBase, reserveBase } from './base'
 import { Builder, Frame } from './builder'
 import { ARENA_HEIGHT, ARENA_SIZE, BASE, basePlan, MID, onCross, TOP, walkways, type ArenaLayout, type Rect } from './plan'
 import { THEMES, type Area } from './themes'
-import type { GeneratorSpot, MapDef, Npc, TeamBase } from './types'
+import type { ChestSpot, GeneratorSpot, MapDef, Npc, TeamBase } from './types'
 
 export { ARENA_HEIGHT, ARENA_SIZE, TOP, type ArenaLayout }
 const LOBBY_Y = 68
@@ -100,6 +100,7 @@ export function createArena(teams: readonly TeamId[] = TEAMS, layout: ArenaLayou
   const generators: GeneratorSpot[] = []
   const npcs: Npc[] = []
   const labels: MapDef['labels'] = []
+  const chests: ChestSpot[] = []
   const zones: Box[] = []
   const areas: Area[] = []
   const protect = (x: number, y: number, z: number, r: number, h = 3) => zones.push([x - r, y, z - r, x + r, y + h, z + r])
@@ -182,6 +183,13 @@ export function createArena(teams: readonly TeamId[] = TEAMS, layout: ArenaLayou
       npcs.push({ kind, team, x: x + 0.5, y: TOP, z: z + 0.5, yaw: kind === 'shop' ? yawToward(-px, -pz) : yawToward(px, pz) })
       protect(x, TOP, z, 0, 2)
     }
+    // One chest per team and one ender chest per player, side by side by the shop.
+    // Both sit outside the lanes bots bridge along, so they never wall one in.
+    for (const [kind, v] of [['team', -5], ['personal', -6]] as const) {
+      const [x, z] = plan.at(0, v)
+      world.set(x, TOP, z, kind === 'team' ? CHEST : ENDER_CHEST)
+      chests.push({ kind, x, y: TOP, z, ...(kind === 'team' ? { team } : {}) })
+    }
     protect(sx, TOP, sz, 1)
     protect(fx, TOP, fz, 1)
     generators.push({ kind: 'iron', team, pos: [fx + 0.5, TOP, fz + 0.5] }, { kind: 'gold', team, pos: [fx + 0.5, TOP, fz + 0.5] })
@@ -219,6 +227,7 @@ export function createArena(teams: readonly TeamId[] = TEAMS, layout: ArenaLayou
     bases,
     generators,
     npcs,
+    chests,
     labels,
     lobby: { spawn: [MID + 0.5, LOBBY_Y, MID + 0.5, 0], box: [MID - L, LOBBY_Y - 1, MID - L, MID + L, LOBBY_Y + 2, MID + L] },
     spectator: [MID + 0.5, TOP + 26, MID + 40, 0, -0.55],

@@ -114,6 +114,14 @@ for (const team of TEAMS) {
   STAINED_GLASS[team] = block({ name: `${team} stained glass`, transparent: true, translucent: true, hardness: 0.3, blastResistance: Infinity, meta: { team }, texture: { top: color, side: color, pattern: 'stained' } })
 }
 
+/**
+ * Team chests and personal ender chests stand on every base. They are map
+ * blocks (never sold, never dug) that the server turns into shared storage:
+ * the chest is the team's, the ender chest each player's own.
+ */
+export const CHEST = block({ name: 'Team chest', hardness: 2, tool: 'axe', blastResistance: Infinity, texture: { top: '#b98a4d', side: '#b98a4d', pattern: 'chest' } })
+export const ENDER_CHEST = block({ name: 'Ender chest', hardness: 2, tool: 'pickaxe', blastResistance: Infinity, texture: { top: '#3d2a58', side: '#3d2a58', pattern: 'ender-chest' } })
+
 export function isBed(id: number): boolean {
   return blockDef(id).meta.bed === true
 }

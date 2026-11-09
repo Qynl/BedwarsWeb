@@ -4,7 +4,7 @@ A complete bed-wars game in the browser and on the desktop: four teams on
 floating islands, beds to defend, forges and diamond and emerald generators,
 a shop and team upgrades, bridging, melee with knockback, bots that play a
 full round (and wrap their bed in wool first), bows, fireballs, TNT, rift
-pearls, bridge eggs and potions, five themed arenas,
+pearls, bridge eggs and potions, team and ender chests, five themed arenas,
 team chat, sound effects and particles made in code, and a practice sandbox
 with a station for every mechanic. It
 runs on Freebuff Sites with browser-hosted casual multiplayer over managed
@@ -13,9 +13,9 @@ server, or as an Electron app.
 
 On the Node server there is no game menu to fight through: you join the
 server and spawn in a shared voxel **hub**, walk through the BEDWARS gate, up
-to one of five keepers and right-click them, or press B to play bed-wars,
-practice, a private bot round, or to open the wardrobe and the optional server
-browser. Matches are made for you, start on their own, fill empty seats with
+to one of five keepers and right-click them, or press B to pick a bed-wars
+map (random or by name). The other keepers open practice, a private bot round,
+the wardrobe and the optional server browser. Matches are made for you, start on their own, fill empty seats with
 bots and let latecomers take a bot's place, so the server always has a round
 going. A parkour tower and a `/list` command give the hub its own life while
 you wait for a match.
@@ -118,12 +118,12 @@ two keys of your choice. The defaults:
 | Sneak | Shift | slow, and you cannot fall off an edge: hold it to bridge |
 | Sprint | Left Ctrl or R, or double-tap W | hold, toggle or always on (Settings, Game) |
 | Attack, break | Left click | hold on a block to break it |
-| Place, use | Right click | hold to keep placing; also eat, drink, throw, raise a shield, shop |
+| Place, use | Right click | hold to keep placing; also eat, drink, throw, raise a shield, open a chest, shop |
 | Bow | Hold right click | release to fire; a full second is a full draw |
 | Hotbar | 1 to 9, mouse wheel | |
 | Drop | Q | throw one of what you hold; Ctrl+Q throws the stack |
 | Inventory | E | click two slots to swap them |
-| Nearest shop | B | in the hub, finds a bed-wars match |
+| Nearest shop | B | in the hub, opens the map picker; in a match, the nearest shop |
 | Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands (`/team red`) |
 | Player list | Tab | |
 | Debug | F3 | position, speed, target, frame rate |
@@ -140,11 +140,14 @@ name tags, talk in one channel and press Tab for the player list. The island
 is generated in `maps/hub.ts` — a quartz plaza and fountain, five keeper
 podiums, the BEDWARS arch and a parkour tower of two-by-two quartz pads that
 climbs from a gold start pad to a gold finish. Walking through the arch joins a
-match, as does the Bedwars keeper or B; nothing opens a lobby card. Times are
-local to the browser; the best is kept in local storage. `/spawn` returns to
-the deck, `/parkour` teleports to the start and `/list` names everyone in the
-hub. Nothing can be built or broken, and swings and falls are harmless: the
-hub is the lobby, not a fight, and matches start on their own.
+random match straight away; the Bedwars keeper or B opens the map picker,
+where Random or any named arena can be chosen. The chosen map is always shown
+on the scoreboard side panel, under the Bed Wars heading. Nothing opens a lobby
+card. Times are local to the browser; the best is kept in local storage.
+`/spawn` returns to the deck, `/parkour` teleports to the start and `/list`
+names everyone in the hub. Nothing can be built or broken, and swings and
+falls are harmless: the hub is the lobby, not a fight, and matches start on
+their own.
 
 The keepers are map metadata (`Npc.kind`), drawn by the client with their own
 looks and name tags; right-clicking one moves you into a room or opens the
@@ -253,7 +256,18 @@ every arena, and `tests/bots.test.ts` plays a round on each.
 New blocks for the themes (sand, sandstone, snow, ice, cobblestone, stone
 bricks, woods, quartz, terracotta, lanterns with `lightLevel`, team-stained
 glass and more) are map blocks only; each has its own pattern painted in
-`render/textures.ts`. The game uses 66 of the 128 block ids a cell can hold.
+`render/textures.ts`. The game uses 68 of the 128 block ids a cell can hold.
+
+### Chests
+
+Every base has two chests by the shop side: a **team chest** and a personal
+**ender chest**. Right-click either one to open a 27-slot window; click one
+slot and then another to move a stack between the chest and your inventory.
+The team chest is shared live with everyone on your team, and only your team
+may open it. The ender chest is private to you, keeps its contents when you
+die, can be opened at any base's ender chest, and empties when a new round
+starts along with the team chest. Both are ordinary map blocks, so they cannot
+be broken, and they sit clear of the lanes bots bridge along.
 
 ## Freebuff Sites
 

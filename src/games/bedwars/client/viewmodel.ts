@@ -67,7 +67,7 @@ export class ViewModel {
       m.position.set(0, -0.02, 0.12)
     }
     this.hand.add(this.arm, outer)
-    this.hand.position.set(0.4, -0.36, -0.8)
+    this.hand.position.set(0.37, -0.34, -0.8)
     this.hand.rotation.set(0.15, 0.2, 0)
     this.scene.add(this.hand)
     // The swing arc: a soft additive streak that follows the blade through the air.
@@ -140,11 +140,22 @@ export class ViewModel {
         g.scale.setScalar(0.045)
         g.position.set(-0.01, 0.1, -0.02)
         g.rotation.set(0.05, Math.PI / 2 - 0.15, 0)
-      } else {
+      } else if (def.kind === 'sword') {
         // Handle at the group origin, so the blade sweeps up and across the view.
-        g.scale.setScalar(0.036)
-        g.position.set(-0.02, 0.11, -0.1)
-        g.rotation.set(0.22, 0.55, Math.PI / 2 + 0.28)
+        // A smaller scale keeps the tip near the crosshair instead of filling the screen,
+        // and the flatter turn shows the blade's face rather than its edge.
+        g.scale.setScalar(0.026)
+        g.position.set(-0.03, 0.07, -0.1)
+        g.rotation.set(0.12, 0.42, Math.PI / 2 + 0.26)
+      } else if (def.kind === 'tool') {
+        g.scale.setScalar(0.026)
+        g.position.set(-0.03, 0.06, -0.1)
+        g.rotation.set(0.16, 0.5, Math.PI / 2 + 0.34)
+      } else {
+        // Food, potions and the rest sit in the palm and face the camera.
+        g.scale.setScalar(0.03)
+        g.position.set(-0.02, 0.08, -0.09)
+        g.rotation.set(0.1, 0.35, 0.35)
       }
       const tier = def.tier ?? 0
       if (def.kind === 'sword' || def.kind === 'tool') {
@@ -188,8 +199,8 @@ export class ViewModel {
     const nibble = eating ? Math.sin(performance.now() / 60) * 0.03 : 0
 
     this.hand.position.set(
-      0.4 + bobX - chop * 0.24 - sh * 0.24 - draw * 0.15 - this.swayX * 0.05 + punch * 0.02,
-      -0.36 + bobY + lift * 0.1 - dip + sh * 0.08 + draw * 0.06 + nibble + this.swayY * 0.03 - punch * 0.03,
+      0.37 + bobX - chop * 0.24 - sh * 0.24 - draw * 0.15 - this.swayX * 0.05 + punch * 0.02,
+      -0.34 + bobY + lift * 0.1 - dip + sh * 0.08 + draw * 0.06 + nibble + this.swayY * 0.03 - punch * 0.03,
       -0.8 - sweep * 0.16 + draw * 0.18 + punch * 0.08,
     )
     this.hand.rotation.set(

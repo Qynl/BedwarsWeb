@@ -159,7 +159,7 @@ export function createHub(): MapDef {
 
   const labels: MapDef['labels'] = [
     { text: 'SKYSHARD NETWORK', x: C, y: TOP + 8.5, z: C + 18 },
-    { text: 'Right-click a keeper to play', x: C, y: TOP + 6.5, z: C + 18 },
+    { text: 'Right-click a keeper to choose a game', x: C, y: TOP + 6.5, z: C + 18 },
     { text: 'BEDWARS', x: C, y: TOP + 8.2, z: MID - 16.5 },
     { text: 'Walk through the gate to play', x: C, y: TOP + 7.0, z: MID - 16.5 },
     { text: 'PARKOUR', x: HUB_PARKOUR.finish[0] + 0.5, y: HUB_PARKOUR.finish[1] + 2.4, z: HUB_PARKOUR.finish[2] + 0.5 },

@@ -69,6 +69,14 @@ export function joinTarget(r: RoomInfo): MatchTarget {
 export const ARENA_IDS = ['skyreach', 'lanterns', 'dunes', 'frostpeak', 'ruins'] as const
 /** Their display names, for the hub's map picker and the server list. */
 export const ARENA_NAMES: Record<string, string> = { skyreach: 'Skyreach', lanterns: 'Lanterns', dunes: 'Dunes', frostpeak: 'Frostpeak', ruins: 'Ruins' }
+/** A one-line look for each map, so picking one is more than a name. */
+export const ARENA_NOTES: Record<string, string> = {
+  skyreach: 'Forest islands on a four-team cross',
+  lanterns: 'A lantern-lit village under a warm sky',
+  dunes: 'Desert temples and long sandstone bridges',
+  frostpeak: 'Frozen peaks, packed ice and spruce',
+  ruins: 'Overgrown ruins swallowed by the jungle',
+}
 
 /**
  * Where the hub sends someone looking for a bed-wars round. It prefers a

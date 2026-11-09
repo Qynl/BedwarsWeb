@@ -13,7 +13,7 @@ import {
   WebGLRenderer,
   type Object3D,
 } from 'three'
-import { AIR, blockDef, TEAM_COLORS, type TeamId } from '../blocks'
+import { AIR, blockDef, CHEST, ENDER_CHEST, TEAM_COLORS, type TeamId } from '../blocks'
 import { breakTicks, checkPlace } from '../../../engine/building'
 import { checkBreak } from '../beds'
 import { ATTACK_REACH, BLOCK_REACH, EYE_HEIGHT, SNEAK_EYE_HEIGHT, TICK_MS, TPS } from '../constants'
@@ -397,6 +397,10 @@ export class Game {
         else if (m.kind === 'error') this.sound.play('deny')
         else if (m.kind === 'title' && m.text === 'Protect your bed') this.sound.play('start')
         break
+      case 'chest':
+        if (m.kind) this.hud.openChest(m.kind, m.slots)
+        else this.hud.chestClosed()
+        break
       case 'summary':
         this.hud.showSummary(m)
         break
@@ -616,8 +620,8 @@ export class Game {
   }
 
   private openNearestShop() {
-    // In the hub the shop key finds a bed-wars match; keepers and the gate do the rest.
-    if (this.inHub) return this.playBedwars()
+    // In the hub the shop key opens the map picker; keepers and the gate do the rest.
+    if (this.inHub) return this.hud.openMapSelect()
     const npc = this.map?.npcs
       .filter((n) => n.kind !== 'dummy')
       .map((n) => ({ n, d: Math.hypot(n.x - this.me.x, n.z - this.me.z) }))
@@ -834,11 +838,28 @@ export class Game {
     else if (t?.kind === 'block') this.startDig(t.hit)
   }
 
+  /** A short line for the HUD when the crosshair rests on something usable. */
+  targetHint(): string | null {
+    const t = this.target
+    if (t?.kind !== 'block' || !this.world) return null
+    const id = this.world.get(t.hit.x, t.hit.y, t.hit.z)
+    return id === CHEST ? 'Right-click: team chest' : id === ENDER_CHEST ? 'Right-click: ender chest' : null
+  }
+
   private secondary() {
     const t = this.target
     const held = this.heldDef()
     if (this.npcTarget) {
       this.talkTo(this.npcTarget.npc)
+      this.rightDown = false
+      return
+    }
+    // Chests are used before anything held: a block in hand must not be placed on them.
+    const hit = t?.kind === 'block' ? t.hit : null
+    const block = hit ? this.world?.get(hit.x, hit.y, hit.z) : undefined
+    if (hit && (block === CHEST || block === ENDER_CHEST)) {
+      this.send({ t: 'chest', x: hit.x, y: hit.y, z: hit.z })
+      this.viewModel.swingNow()
       this.rightDown = false
       return
     }
@@ -877,7 +898,7 @@ export class Game {
       case 'upgrades':
         return this.hud.openShop('upgrades')
       case 'bedwars':
-        return this.playBedwars()
+        return this.hud.openMapSelect()
       case 'rooms':
         return this.hud.openServers()
       case 'wardrobe':

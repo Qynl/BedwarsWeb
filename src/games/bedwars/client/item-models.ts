@@ -1,8 +1,8 @@
 import { BoxGeometry, Color, Group, InstancedMesh, MeshLambertMaterial, Object3D } from 'three'
 import { itemArt, itemPalette } from './icons'
 
-/** How thick each sprite pixel is, in pixels. A sword gets a real back and edge. */
-const DEPTH = 3
+/** How thick each sprite pixel is, in pixels. Enough for a real back and edge without a slab. */
+const DEPTH = 2
 
 export interface ItemModel {
   group: Group

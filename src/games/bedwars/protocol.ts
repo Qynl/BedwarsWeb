@@ -38,6 +38,11 @@ export type ClientMessage =
   | { t: 'buy'; offer: string }
   | { t: 'upgrade'; id: UpgradeId }
   | { t: 'swap'; a: number; b: number }
+  /** Right-click a chest block: opens the team's chest or your own ender chest. */
+  | { t: 'chest'; x: number; y: number; z: number }
+  /** Swap one slot between the open chest and your inventory. */
+  | { t: 'chestSwap'; kind: ChestKind; a: ChestRef; b: ChestRef }
+  | { t: 'chestClose' }
   | { t: 'team'; team: TeamId }
   | { t: 'start' }
   /** Host only, before a round: bots on or off, and optionally their level. */
@@ -51,6 +56,13 @@ export type ClientMessage =
   | { t: 'throw' }
   /** Your cosmetics, as a look code (look.ts); the server validates it. */
   | { t: 'look'; look: string }
+
+export type ChestKind = 'team' | 'personal'
+export type ChestSide = 'chest' | 'inventory'
+export interface ChestRef {
+  side: ChestSide
+  index: number
+}
 
 export interface PlayerView {
   id: number
@@ -195,6 +207,8 @@ export type ServerMessage =
   | { t: 'effect'; effect: number; x: number; y: number; z: number }
   /** Lobby map vote: every layout with its votes, and the one loaded now. */
   | { t: 'votes'; maps: { id: string; name: string; votes: number }[]; current: string }
+  /** The open chest's contents; `kind` null closes the window. */
+  | { t: 'chest'; kind: ChestKind | null; slots: (Slot | null)[] }
   /** End of a round: the winner and everyone's stats, for the end screen. */
   | { t: 'summary'; winner: TeamId | 'draw'; players: RoundStats[]; lobbyIn: number }
   /** Lobby settings beyond the game view: the bot level. Sent on connect and when it changes. */

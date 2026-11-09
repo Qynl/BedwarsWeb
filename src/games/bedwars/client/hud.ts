@@ -1,15 +1,15 @@
 import { TEAM_COLORS, TEAM_NAMES, type TeamId } from '../blocks'
 import { BRAND, MAX_HEALTH, TPS } from '../constants'
 import { OFFERS, TOOL_TIER_COST, UPGRADES, type Offer, type OfferCategory } from '../shop'
-import { countItem, HOTBAR, INVENTORY_SIZE } from '../../../engine/inventory'
+import { countItem, HOTBAR, INVENTORY_SIZE, type Slot } from '../../../engine/inventory'
 import { ARMOR_ORDER, AXES, item, PICKAXES } from '../items'
-import type { ServerMessage } from '../protocol'
+import type { ChestKind, ChestRef, ServerMessage } from '../protocol'
 import type { Game } from './game'
 import { keyLabel, type Action } from './settings'
 import { openSettings } from './settings-ui'
 import { openWardrobe } from './wardrobe'
 import { remixButton, summaryLine } from './promo'
-import { ARENA_NAMES, fetchRooms, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
+import { ARENA_IDS, ARENA_NAMES, ARENA_NOTES, fetchRooms, joinTarget, openSeats, statusLabel, type RoomList } from './rooms'
 
 const RESOURCE_COLORS: Record<string, string> = { iron: '#e8e8e8', gold: '#f2cf4a', diamond: '#5fe0d8', emerald: '#38d36b' }
 
@@ -32,6 +32,7 @@ const HEART = (fill: 'full' | 'half' | 'empty') =>
 export class Hud {
   private root = el('div', 'hud')
   private crosshair = el('div', 'crosshair')
+  private hint = el('div', 'target-hint')
   private charge = el('div', 'charge')
   private marker = el('div', 'hitmarker')
   private direction = el('div', 'damage-dir')
@@ -61,13 +62,16 @@ export class Hud {
   private slots: HTMLDivElement[] = []
   private titleUntil = 0
   private debugOn = false
-  private modalKind: 'shop' | 'upgrades' | 'inventory' | 'servers' | null = null
+  private modalKind: 'shop' | 'upgrades' | 'inventory' | 'servers' | 'maps' | 'chest' | null = null
   /** The server's room list, polled while in the hub for the sidebar and the gateways. */
   private hubList: RoomList | null = null
   private hubFetchedAt = 0
   private hubRefreshing = false
   private shopTab: OfferCategory = 'blocks'
   private pickedSlot: number | null = null
+  /** The chest the server has open, and the slot picked to swap. */
+  private chest: { kind: ChestKind; slots: (Slot | null)[] } | null = null
+  private chestPick: ChestRef | null = null
   private lastRender = 0
   private lastFps = 0
   chatOpen = false
@@ -90,7 +94,7 @@ export class Hud {
     const chat = el('div', 'chat')
     chat.append(this.chatLog, this.chatInput)
     this.renderPause()
-    this.root.append(this.vignette, this.direction, this.crosshair, this.marker, this.charge, this.fps, this.sidebar, this.feed, chat, this.title, this.weather, this.center, this.backdrop, this.lobby, this.scoreboard, this.debug, bottom, this.toasts, this.summary, this.modal, this.help, this.loading, this.error, this.flash)
+    this.root.append(this.vignette, this.direction, this.crosshair, this.hint, this.marker, this.charge, this.fps, this.sidebar, this.feed, chat, this.title, this.weather, this.center, this.backdrop, this.lobby, this.scoreboard, this.debug, bottom, this.toasts, this.summary, this.modal, this.help, this.loading, this.error, this.flash)
     this.backdrop.addEventListener('click', () => this.game.lock())
     container.append(this.root)
 
@@ -125,7 +129,7 @@ export class Hud {
     const k = (a: Action) => (this.game.settings.keys[a] ?? []).map(keyLabel).join(' or ') || 'unbound'
     const sprint = this.game.settings.sprintMode === 'always' ? 'always on' : `${k('sprint')}${this.game.settings.doubleTapSprint ? ', or double-tap forward' : ''}`
     const hub = this.game.inHub
-    const hubButtons = hub ? '<button class="btn" data-pause="play">Find a match</button><button class="btn" data-pause="servers">Rooms</button>' : ''
+    const hubButtons = hub ? '<button class="btn" data-pause="play">Choose a map</button><button class="btn" data-pause="servers">Rooms</button>' : ''
     const invite = !hub && !this.game.mode.offline && this.game.mode.world === 'arena' ? '<button class="btn" data-pause="invite">Invite</button>' : ''
     this.help.innerHTML = `<div class="help-card"><h1>${BRAND}</h1>
       <div class="pause-row"><button class="btn primary" data-pause="resume">Back to game</button>${hubButtons}${invite}<button class="btn" data-pause="wardrobe">Wardrobe</button><button class="btn" data-pause="settings">Settings</button>${this.game.mode.canHub && !hub ? '<button class="btn" data-pause="hub">Server hub</button>' : ''}<button class="btn" data-pause="leave">Leave</button>${remixButton()}</div>
@@ -133,14 +137,14 @@ export class Hud {
         <span><kbd>${k('forward')}</kbd> <kbd>${k('left')}</kbd> <kbd>${k('back')}</kbd> <kbd>${k('right')}</kbd> move</span>
         <span><kbd>${k('jump')}</kbd> jump</span><span><kbd>${k('sneak')}</kbd> sneak</span><span><kbd>${sprint}</kbd> sprint</span>
         <span><kbd>Left click</kbd> ${hub ? 'swing' : 'hit, break'}</span><span><kbd>Right click</kbd> ${hub ? 'talk to a keeper' : 'place, use, shop'}</span><span><kbd>1-9</kbd> hotbar</span>
-        <span><kbd>${k('drop')}</kbd> drop</span><span><kbd>${k('inventory')}</kbd> inventory</span><span><kbd>${k('shop')}</kbd> ${hub ? 'find a match' : 'shop'}</span><span><kbd>${k('players')}</kbd> players</span>
+        <span><kbd>${k('drop')}</kbd> drop</span><span><kbd>${k('inventory')}</kbd> inventory</span><span><kbd>${k('shop')}</kbd> ${hub ? 'choose a map' : 'shop'}</span><span><kbd>${k('players')}</kbd> players</span>
         <span><kbd>${k('chat')}</kbd> chat</span><span><kbd>${k('debug')}</kbd> debug</span>
       </div><p class="muted small">Every control is explained, and can be changed, in Settings, Controls.</p></div>`
     this.help.querySelector('[data-pause="resume"]')!.addEventListener('click', () => this.game.lock())
     this.help.querySelector('[data-pause="settings"]')!.addEventListener('click', () => this.openSettingsWindow())
     this.help.querySelector('[data-pause="wardrobe"]')!.addEventListener('click', () => this.openWardrobeWindow())
     this.help.querySelector('[data-pause="hub"]')?.addEventListener('click', () => this.game.returnToHub())
-    this.help.querySelector('[data-pause="play"]')?.addEventListener('click', () => this.game.playBedwars())
+    this.help.querySelector('[data-pause="play"]')?.addEventListener('click', () => this.openMapSelect())
     this.help.querySelector('[data-pause="invite"]')?.addEventListener('click', () => {
       const url = location.href
       if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => this.toast('Invite link copied'), () => this.toast(url))
@@ -353,14 +357,17 @@ export class Hud {
   }
 
   closeModal() {
+    if (this.modalKind === 'chest') this.game.send({ t: 'chestClose' })
     this.modalKind = null
     this.pickedSlot = null
+    this.chest = null
+    this.chestPick = null
     this.modal.classList.remove('show')
     this.modal.innerHTML = ''
     this.game.lock()
   }
 
-  private openModal(kind: 'shop' | 'upgrades' | 'inventory' | 'servers') {
+  private openModal(kind: 'shop' | 'upgrades' | 'inventory' | 'servers' | 'maps' | 'chest') {
     this.modalKind = kind
     // The content may have been cleared by a close; never let a stale cache key skip the draw.
     this.modal.dataset.key = ''
@@ -383,6 +390,31 @@ export class Hud {
     this.openModal('servers')
   }
 
+  /** The map picker: random, or one of the arenas by name. */
+  openMapSelect() {
+    this.openModal('maps')
+    void this.refreshHubRooms()
+  }
+
+  /** Opens a chest window pushed by the server, or refreshes the one already open. */
+  openChest(kind: ChestKind, slots: (Slot | null)[]) {
+    this.chest = { kind, slots }
+    if (this.modalKind === 'chest') {
+      this.renderChest()
+      return
+    }
+    this.chestPick = null
+    this.openModal('chest')
+  }
+
+  /** The server closed the chest (death, round end or another window). */
+  chestClosed() {
+    if (this.modalKind !== 'chest') return
+    this.chest = null
+    this.chestPick = null
+    this.closeModal()
+  }
+
   /** Refreshes the room list behind the sidebar and the hub's gateways. */
   private async refreshHubRooms(): Promise<void> {
     if (this.hubRefreshing) return
@@ -391,7 +423,7 @@ export class Hud {
     const list = await fetchRooms()
     this.hubRefreshing = false
     this.hubList = list
-    if (this.modalKind === 'servers') this.renderModal()
+    if (this.modalKind === 'servers' || this.modalKind === 'maps') this.renderModal()
   }
 
   // Per-frame ---------------------------------------------------------------
@@ -439,6 +471,9 @@ export class Hud {
     this.renderLobby()
     this.renderCenter()
     this.renderWeather()
+    const hint = self.alive ? (g.targetHint() ?? '') : ''
+    if (this.hint.textContent !== hint) this.hint.textContent = hint
+    this.hint.classList.toggle('show', !!hint)
     if (this.scoreboard.classList.contains('show')) this.renderScoreboard()
     if (this.modalKind) this.renderModal()
     this.crosshair.classList.toggle('hidden', !self.alive)
@@ -493,7 +528,7 @@ export class Hud {
         `<div class="brand">${BRAND} NETWORK</div>`,
         `<div class="line">Online <b>${online ?? '…'}</b> · ${g.views.length} in the hub</div>`,
         `<div class="line muted">Bedwars matches: <b>${matches ?? '…'}</b></div>`,
-        `<div class="line muted small">Right-click a keeper to play. B finds a match.</div>`,
+        `<div class="line muted small">Right-click a keeper to choose a map. B opens the picker.</div>`,
       ]
       if (pk) {
         rows.push('<div class="hub-rule"></div>')
@@ -508,6 +543,7 @@ export class Hud {
       return
     }
     const rows: string[] = [`<div class="brand">${BRAND}</div>`]
+    if (view.mode === 'arena') rows.push(`<div class="map-line">Map: <b>${escapeHtml(g.map?.name ?? 'Arena')}</b></div>`)
     if (view.mode === 'sandbox') rows.push('<div class="line muted">Sandbox: try every mechanic. /help for commands.</div>')
     else if (view.phase === 'waiting') rows.push('<div class="line muted">Starting soon</div>')
     else if (view.phase === 'countdown') rows.push(`<div class="line">Starting in <b>${Math.ceil(g.clock() / TPS)}</b></div>`)
@@ -599,12 +635,31 @@ export class Hud {
 
   private renderScoreboard() {
     const g = this.game
-    const hub = g.inHub
-    const rows = [...g.views]
-      .sort((a, b) => (a.team ?? 'z').localeCompare(b.team ?? 'z'))
-      .map((p) => `<div class="score-row"><i style="background:${p.team ? TEAM_COLORS[p.team] : hub ? '#8fd0ff' : '#888'}"></i><span class="name">${escapeHtml(p.name)}${p.id === g.myId ? ' (you)' : ''}</span><span class="right">${hub ? 'in the hub' : p.alive ? `${p.health} hp` : 'dead'}</span></div>`)
+    if (g.inHub) {
+      const rows = [...g.views]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => `<div class="score-row"><i style="background:#8fd0ff"></i><span class="name">${escapeHtml(p.name)}${p.id === g.myId ? ' (you)' : ''}</span><span class="right">in the hub</span></div>`)
+        .join('')
+      this.scoreboard.innerHTML = `<div class="score-head"><b>BED WARS</b><span>Hub</span></div><h3>Players in the hub</h3>${rows}`
+      return
+    }
+    const view = g.gameView
+    const teams = view?.teams ?? []
+    const rows = teams
+      .map(
+        (t) =>
+          `<div class="score-row team${t.eliminated ? ' out' : ''}"><i style="background:${TEAM_COLORS[t.team]}"></i><span class="name">${TEAM_NAMES[t.team]}</span><span class="right"><span class="bed-mark ${t.bed ? 'on' : 'off'}">${t.bed ? '✓' : '✗'}</span> ${t.alive}</span></div>`,
+      )
       .join('')
-    this.scoreboard.innerHTML = `<h3>${hub ? 'Players in the hub' : 'Players'}</h3>${rows}`
+    const self = g.self
+    const stats = self?.stats
+    const phase = view?.phase === 'ended' ? 'Game over' : view?.phase === 'playing' ? 'In progress' : 'Starting'
+    const resources = self ? ['iron', 'gold', 'diamond', 'emerald'].map((r) => `<span class="res"><i style="background:${RESOURCE_COLORS[r]}"></i>${countItem(self.inventory, r)}</span>`).join('') : ''
+    this.scoreboard.innerHTML = `<div class="score-head"><b>BED WARS</b><span>${phase}</span></div>
+      <div class="score-map">Map: ${escapeHtml(g.map?.name ?? 'Arena')}</div>
+      <div class="score-sep"></div>${rows}<div class="score-sep"></div>
+      <div class="score-stat">Kills <b>${stats?.kills ?? 0}</b> · Finals <b>${stats?.finals ?? 0}</b> · Beds <b>${stats?.beds ?? 0}</b></div>
+      <div class="score-res">${resources}</div>`
   }
 
   // Modals -------------------------------------------------------------------
@@ -614,12 +669,24 @@ export class Hud {
     if (!self || !this.modalKind) return
     // The hub's windows are made of the room list: redraw them only when it changes,
     // so scrolling and clicking in a list are not interrupted 60 times a second.
+    if (this.modalKind === 'chest') {
+      this.renderChest()
+      return
+    }
     if (this.modalKind === 'servers') {
       const rooms = this.hubList?.rooms ?? []
       const key = JSON.stringify([this.hubList?.online ?? null, rooms.map((r) => [r.room, r.world, r.phase, r.players, r.bots, r.auto, r.mapId, r.fast])])
       if (this.modal.dataset.key === key) return
       this.modal.dataset.key = key
       this.renderServers()
+      return
+    }
+    if (this.modalKind === 'maps') {
+      const rooms = this.hubList?.rooms ?? []
+      const key = JSON.stringify([rooms.filter((r) => r.world === 'arena').map((r) => [r.mapId, r.players, r.bots])])
+      if (this.modal.dataset.key === key) return
+      this.modal.dataset.key = key
+      this.renderMaps()
       return
     }
     const key = JSON.stringify([this.modalKind, this.shopTab, self.inventory, self.armor, self.upgrades, self.pickaxeTier, self.axeTier, this.pickedSlot])
@@ -698,6 +765,74 @@ export class Hud {
       <div class="wallet"><span class="res"><i style="background:${RESOURCE_COLORS.diamond}"></i>${diamonds} diamonds</span></div></div>`
     this.modal.querySelector('[data-close]')!.addEventListener('click', () => this.closeModal())
     this.modal.querySelectorAll<HTMLButtonElement>('[data-upgrade]').forEach((b) => b.addEventListener('click', () => this.game.send({ t: 'upgrade', id: b.dataset.upgrade as never })))
+  }
+
+  private renderMaps() {
+    const rooms = this.hubList?.rooms.filter((r) => r.world === 'arena') ?? []
+    const playing = (id: string) => rooms.filter((r) => r.mapId === id).reduce((n, r) => n + r.players + r.bots, 0)
+    const total = rooms.reduce((n, r) => n + r.players + r.bots, 0)
+    const cards = ARENA_IDS.map(
+      (id) =>
+        `<button class="map-card" data-map="${id}"><span class="map-face"><b>${escapeHtml(ARENA_NAMES[id])}</b><small>${escapeHtml(ARENA_NOTES[id] ?? '')}</small></span><span class="map-meta">${playing(id)} playing</span></button>`,
+    ).join('')
+    this.modal.innerHTML = `<div class="window panel wide">
+      <div class="window-head"><h2>Choose a map</h2><button class="btn ghost" data-close>Close</button></div>
+      <p class="muted small">Pick the arena you want, or let the server put you in the fullest queue. The map is shown on the scoreboard once you are in.</p>
+      <button class="map-card random" data-map=""><span class="map-face"><b>Random map</b><small>The quickest queue, any arena</small></span><span class="map-meta">${total} playing</span></button>
+      <div class="map-picker">${cards}</div>
+      <div class="gateway-row"><button class="btn" data-close>Cancel</button><button class="btn" data-refresh>Refresh</button></div>
+    </div>`
+    this.modal.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => this.closeModal()))
+    this.modal.querySelector('[data-refresh]')!.addEventListener('click', () => void this.refreshHubRooms())
+    this.modal.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.map ?? ''
+        this.closeModal()
+        this.game.playBedwars(id || undefined)
+      }),
+    )
+  }
+
+  private renderChest() {
+    const self = this.game.self
+    if (!self || !this.chest) return
+    const team = self.team ?? 'red'
+    const key = JSON.stringify([this.chest.kind, this.chest.slots, self.inventory, this.chestPick])
+    if (this.modal.dataset.key === key) return
+    this.modal.dataset.key = key
+    const cell = (side: ChestRef['side'], i: number, s: Slot | null) => {
+      const picked = this.chestPick?.side === side && this.chestPick.index === i
+      const name = s ? (item(s.id)?.name ?? s.id) : ''
+      return `<button class="slot inv${picked ? ' picked' : ''}" data-${side === 'chest' ? 'chest' : 'inv'}="${i}" title="${escapeHtml(name)}">${s ? `<img src="${this.game.icons.url(s.id, team)}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>` : ''}</button>`
+    }
+    const chest = this.chest.slots.map((s, i) => cell('chest', i, s)).join('')
+    const hot = self.inventory.slice(0, HOTBAR).map((s, i) => cell('inventory', i, s)).join('')
+    const storage = self.inventory.slice(HOTBAR).map((s, k) => cell('inventory', k + HOTBAR, s)).join('')
+    const title = this.chest.kind === 'team' ? 'Team chest' : 'Ender chest'
+    const note = this.chest.kind === 'team' ? 'Shared with your whole team. Everyone on it can take what is inside.' : 'Yours alone. It keeps its contents when you die, and empties when a new round starts.'
+    this.modal.innerHTML = `<div class="window panel chest-window">
+      <div class="window-head"><h2>${title}</h2><button class="btn ghost" data-close>Close</button></div>
+      <p class="muted small">${note} Click two slots to move a stack.</p>
+      <div class="inv-grid chest-grid">${chest}</div>
+      <div class="chest-sep">Your inventory</div>
+      <div class="inv-grid">${storage}</div><div class="inv-grid hotrow">${hot}</div>
+    </div>`
+    this.modal.querySelector('[data-close]')!.addEventListener('click', () => this.closeModal())
+    this.modal.querySelectorAll<HTMLButtonElement>('[data-chest]').forEach((b) => b.addEventListener('click', () => this.pickChest('chest', Number(b.dataset.chest))))
+    this.modal.querySelectorAll<HTMLButtonElement>('[data-inv]').forEach((b) => b.addEventListener('click', () => this.pickChest('inventory', Number(b.dataset.inv))))
+  }
+
+  private pickChest(side: ChestRef['side'], index: number) {
+    if (!this.chest) return
+    if (!this.chestPick) {
+      this.chestPick = { side, index }
+      this.renderChest()
+      return
+    }
+    const a = this.chestPick
+    this.chestPick = null
+    if (a.side !== side || a.index !== index) this.game.send({ t: 'chestSwap', kind: this.chest.kind, a, b: { side, index } })
+    this.renderChest()
   }
 
   private renderServers() {
