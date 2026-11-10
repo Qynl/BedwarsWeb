@@ -79,3 +79,19 @@ test('the tunnel queues early bytes and close events until the client attaches',
     globalThis.WebSocket = realWebSocket
   }
 })
+
+test('direct tunnels name the TCP target on the WebSocket URL', async () => {
+  const realWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
+  try {
+    const pending = openTunnel('mc.example.org', 25565, { url: 'https://site.test/api/mc-proxy', direct: true })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const socket = FakeSocket.last!
+    expect(socket.url).toBe('wss://site.test/api/mc-proxy?host=mc.example.org&port=25565')
+    socket.open()
+    const tunnel = await pending
+    expect(tunnel).toBeTruthy()
+  } finally {
+    globalThis.WebSocket = realWebSocket
+  }
+})

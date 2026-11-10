@@ -7,21 +7,27 @@
 export const DEFAULT_PROXY = 'https://pproxy.rom1504.fr/api/vm/net'
 /** Our Node server (and the Vite dev server) exposes the net-browserify API here. */
 const ORIGIN_PROXY = typeof window !== 'undefined' ? `${window.location.origin}/api/mc-proxy` : null
-let discovered: Promise<string> | null = null
+export interface ProxyChoice {
+  url: string
+  /** True when the WebSocket can name the TCP destination itself (serverless hosts). */
+  direct: boolean
+}
+const PUBLIC: ProxyChoice = { url: DEFAULT_PROXY, direct: false }
+let discovered: Promise<ProxyChoice> | null = null
 
 /** Prefer the proxy hosted by this site; static/Sites builds fall back to the public one. */
-export async function pickProxy(): Promise<string> {
-  if (!ORIGIN_PROXY) return DEFAULT_PROXY
+export async function pickProxy(): Promise<ProxyChoice> {
+  if (!ORIGIN_PROXY) return PUBLIC
   discovered ??= (async () => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 1500)
     try {
       const response = await fetch(ORIGIN_PROXY, { method: 'GET', signal: controller.signal, cache: 'no-store' })
-      if (!response.ok) return DEFAULT_PROXY
-      const body = (await response.json()) as { ok?: boolean }
-      return body.ok ? ORIGIN_PROXY : DEFAULT_PROXY
+      if (!response.ok) return PUBLIC
+      const body = (await response.json()) as { ok?: boolean; direct?: boolean }
+      return body.ok ? { url: ORIGIN_PROXY, direct: !!body.direct } : PUBLIC
     } catch {
-      return DEFAULT_PROXY
+      return PUBLIC
     } finally {
       clearTimeout(timer)
     }
@@ -42,36 +48,41 @@ interface Ticket {
   error?: string
 }
 
-export async function openTunnel(host: string, port: number, proxy?: string): Promise<Tunnel> {
-  const base = (proxy ?? await pickProxy()).replace(/\/+$/, '')
-  let response: Response
-  try {
-    response = await fetch(`${base}/connect`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ host, port }),
-      mode: 'cors',
-    })
-  } catch {
-    throw new Error(`Could not reach the public proxy at ${new URL(base).host}.`)
-  }
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`
+export async function openTunnel(host: string, port: number, proxy?: string | ProxyChoice): Promise<Tunnel> {
+  const choice = typeof proxy === 'string' ? { url: proxy, direct: false } : proxy ?? await pickProxy()
+  const base = choice.url.replace(/\/+$/, '')
+  let socket: WebSocket
+  if (choice.direct) {
+    socket = new WebSocket(`${base.replace(/^http/i, 'ws')}?host=${encodeURIComponent(host)}&port=${port}`)
+  } else {
+    let response: Response
     try {
-      const body = (await response.json()) as Ticket
-      if (body.error) detail = body.error
-    } catch { /* a plain-text error is fine */ }
-    throw new Error(`The proxy refused ${host}:${port} (${detail}).`)
+      response = await fetch(`${base}/connect`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ host, port }),
+        mode: 'cors',
+      })
+    } catch {
+      throw new Error(`Could not reach the proxy at ${new URL(base).host}.`)
+    }
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`
+      try {
+        const body = (await response.json()) as Ticket
+        if (body.error) detail = body.error
+      } catch { /* a plain-text error is fine */ }
+      throw new Error(`The proxy refused ${host}:${port} (${detail}).`)
+    }
+    let ticket: Ticket
+    try {
+      ticket = (await response.json()) as Ticket
+    } catch {
+      throw new Error(`The proxy returned an unexpected response (HTTP ${response.status}).`)
+    }
+    if (!ticket.token) throw new Error('The proxy did not return a connection token.')
+    socket = new WebSocket(`${base.replace(/^http/i, 'ws')}/socket?token=${encodeURIComponent(ticket.token)}`)
   }
-  let ticket: Ticket
-  try {
-    ticket = (await response.json()) as Ticket
-  } catch {
-    throw new Error(`The proxy returned an unexpected response (HTTP ${response.status}).`)
-  }
-  if (!ticket.token) throw new Error('The proxy did not return a connection token.')
-
-  const socket = new WebSocket(`${base.replace(/^http/i, 'ws')}/socket?token=${encodeURIComponent(ticket.token)}`)
   socket.binaryType = 'arraybuffer'
 
   let onData: ((bytes: Uint8Array) => void) | null = null

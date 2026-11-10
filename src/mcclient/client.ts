@@ -60,7 +60,7 @@ import {
   VERSION_NAME,
   type SpawnedEntity,
 } from './protocol'
-import { openTunnel, type Tunnel } from './proxy'
+import { openTunnel, type ProxyChoice, type Tunnel } from './proxy'
 
 export interface ClientEvents {
   status(text: string, kind?: 'info' | 'ok' | 'error'): void
@@ -183,7 +183,7 @@ export class RealClient {
     requestAnimationFrame(this.animate)
   }
 
-  async connect(host: string, port: number, name: string, proxy?: string): Promise<void> {
+  async connect(host: string, port: number, name: string, proxy?: string | ProxyChoice): Promise<void> {
     this.disconnect()
     this.state = 'login'
     this.threshold = -1

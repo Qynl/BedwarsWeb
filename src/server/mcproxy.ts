@@ -31,6 +31,13 @@ export interface McProxyOptions {
   maxTunnels?: number
   /** Maximum unclaimed tokens waiting for their WebSocket. */
   maxPending?: number
+  /**
+   * Allow `WS /api/mc-proxy?host=…&port=…` without the POST token handshake.
+   * Serverless hosts (Vercel) may run the POST and the WebSocket on different
+   * instances, so they cannot share the pending-socket map. Only enable this on
+   * a deployment that already trusts same-origin visitors.
+   */
+  direct?: boolean
 }
 
 interface PendingTunnel {
@@ -76,6 +83,7 @@ export function createMcProxy(options: McProxyOptions = {}) {
   const maxTunnels = Math.max(1, options.maxTunnels ?? 64)
   const maxPending = Math.max(1, options.maxPending ?? 64)
   const pending = new Map<string, PendingTunnel>()
+  const directPending = new Set<net.Socket>()
   const activeSockets = new Set<WebSocket>()
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
   let active = 0
@@ -105,7 +113,7 @@ export function createMcProxy(options: McProxyOptions = {}) {
         res.writeHead(405, { allow: 'GET, HEAD' }).end()
         return true
       }
-      json(res, 200, { ok: true, name: 'SKYSHARD Minecraft proxy', protocol: 'net-browserify' })
+      json(res, 200, { ok: true, name: 'SKYSHARD Minecraft proxy', protocol: 'net-browserify', direct: !!options.direct })
       return true
     }
     if (url.pathname !== MC_PROXY_CONNECT_PATH) {
@@ -187,7 +195,7 @@ export function createMcProxy(options: McProxyOptions = {}) {
       return false
     }
     if (!isProxyPath(url.pathname)) return false
-    if (url.pathname !== MC_PROXY_SOCKET_PATH) {
+    if (url.pathname !== MC_PROXY_SOCKET_PATH && !(options.direct && url.pathname === MC_PROXY_PATH)) {
       socket.destroy()
       return true
     }
@@ -195,42 +203,80 @@ export function createMcProxy(options: McProxyOptions = {}) {
       socket.destroy()
       return true
     }
+    const attach = (tcp: net.Socket) => {
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+        if (closed || socket.destroyed) { tcp.destroy(); ws.close(); return }
+        active++
+        activeSockets.add(ws)
+        let ended = false
+        const finish = () => {
+          if (ended) return
+          ended = true
+          active = Math.max(0, active - 1)
+          activeSockets.delete(ws)
+          tcp.destroy()
+          try { ws.close() } catch { /* already closed */ }
+        }
+        tcp.on('data', (data) => {
+          if (ws.readyState === ws.OPEN) ws.send(data, { binary: true })
+        })
+        tcp.on('close', finish)
+        tcp.on('error', finish)
+        ws.on('message', (data, isBinary) => {
+          if (ended || tcp.destroyed) return
+          if (isBinary) tcp.write(data as Buffer)
+          else tcp.write(String(data))
+        })
+        ws.on('close', finish)
+        ws.on('error', finish)
+      })
+    }
+
     const token = url.searchParams.get('token')
-    const entry = token ? pending.get(token) : undefined
-    if (!token || !entry || entry.expires < Date.now()) {
-      if (token) pending.delete(token)
+    if (!token) {
+      if (!options.direct) { socket.destroy(); return true }
+      const host = url.searchParams.get('host')
+      const port = Number(url.searchParams.get('port'))
+      if (!validHost(host) || !validPort(port)) { socket.destroy(); return true }
+      const tcp = net.connect({ host: host.trim(), port })
+      tcp.setNoDelay(true)
+      directPending.add(tcp)
+      let opened = false
+      const timer = setTimeout(() => {
+        directPending.delete(tcp)
+        tcp.destroy()
+        socket.destroy()
+      }, connectTimeout)
+      tcp.once('connect', () => {
+        clearTimeout(timer)
+        directPending.delete(tcp)
+        opened = true
+        if (closed || socket.destroyed) { tcp.destroy(); return }
+        attach(tcp)
+      })
+      tcp.once('error', () => {
+        clearTimeout(timer)
+        directPending.delete(tcp)
+        socket.destroy()
+      })
+      socket.once('close', () => {
+        if (!opened) {
+          clearTimeout(timer)
+          directPending.delete(tcp)
+          tcp.destroy()
+        }
+      })
+      return true
+    }
+    const entry = pending.get(token)
+    if (!entry || entry.expires < Date.now()) {
+      pending.delete(token)
       entry?.socket.destroy()
       socket.destroy()
       return true
     }
     pending.delete(token)
-    const tcp = entry.socket
-    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-      if (closed || socket.destroyed) { tcp.destroy(); ws.close(); return }
-      active++
-      activeSockets.add(ws)
-      let ended = false
-      const finish = () => {
-        if (ended) return
-        ended = true
-        active = Math.max(0, active - 1)
-        activeSockets.delete(ws)
-        tcp.destroy()
-        try { ws.close() } catch { /* already closed */ }
-      }
-      tcp.on('data', (data) => {
-        if (ws.readyState === ws.OPEN) ws.send(data, { binary: true })
-      })
-      tcp.on('close', finish)
-      tcp.on('error', finish)
-      ws.on('message', (data, isBinary) => {
-        if (ended || tcp.destroyed) return
-        if (isBinary) tcp.write(data as Buffer)
-        else tcp.write(String(data))
-      })
-      ws.on('close', finish)
-      ws.on('error', finish)
-    })
+    attach(entry.socket)
     return true
   }
 
@@ -239,6 +285,8 @@ export function createMcProxy(options: McProxyOptions = {}) {
     clearInterval(sweep)
     for (const entry of pending.values()) entry.socket.destroy()
     pending.clear()
+    for (const socket of directPending) socket.destroy()
+    directPending.clear()
     for (const socket of activeSockets) {
       try { socket.close() } catch { /* already closed */ }
     }
