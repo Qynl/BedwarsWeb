@@ -42,11 +42,12 @@ repository already contains both halves:
 
 Deploy with `npx vercel --prod` from the repository root (or connect the
 repository in the Vercel dashboard). WebSockets are a Vercel beta feature and
-require Fluid Compute; on the Hobby plan a tunnel is closed after about five
-minutes, so the client reconnects with backoff. That is fine for playing a
-match in a tab, but it is not a 24/7 relay for other servers. The function opens
-an outbound TCP connection per tunnel and caps concurrency at 64, so keep an eye
-on usage.
+require Fluid Compute; the host closes every tunnel when the function reaches
+its duration limit (five minutes on Hobby, about thirteen on Pro). A Minecraft
+connection cannot be resumed across that close, so the client drops and you
+have to join again. That is fine for a quick session in a tab, but it is not a
+24/7 relay for other servers. The function opens an outbound TCP connection per
+tunnel and caps concurrency at 64, so keep an eye on usage.
 
 ## 1. Create the Oracle VM
 
