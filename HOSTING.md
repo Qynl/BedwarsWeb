@@ -26,6 +26,28 @@ allowance was reduced to roughly **2 OCPUs / 12 GB RAM**; check the console for
 the current “Always Free” badge before creating anything. The setup below fits
 inside the smaller allowance.
 
+## Static site + first-party browser proxy on Vercel
+
+The static client can be hosted on Vercel together with our own
+WebSocket-to-TCP bridge, so visitors never touch `pproxy.rom1504.fr`. The
+repository already contains both halves:
+
+- `vercel.json` builds the Vite client to `dist/client` and deploys the
+  `api/mc-proxy.ts` function.
+- `api/mc-proxy.ts` wraps `createMcProxy({ direct: true })` in a Node HTTP
+  server and exports it, which is the shape Vercel's WebSocket support expects.
+- The browser probes `GET /api/mc-proxy` on its own origin, sees `direct: true`,
+  and opens `wss://<site>/api/mc-proxy?host=…&port=…`. No token POST is needed,
+  because Vercel may run the POST and the upgrade on different Fluid instances.
+
+Deploy with `npx vercel --prod` from the repository root (or connect the
+repository in the Vercel dashboard). WebSockets are a Vercel beta feature and
+require Fluid Compute; on the Hobby plan a tunnel is closed after about five
+minutes, so the client reconnects with backoff. That is fine for playing a
+match in a tab, but it is not a 24/7 relay for other servers. The function opens
+an outbound TCP connection per tunnel and caps concurrency at 64, so keep an eye
+on usage.
+
 ## 1. Create the Oracle VM
 
 1. Sign up at <https://www.oracle.com/cloud/free/>. A card is used for identity
