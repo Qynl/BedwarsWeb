@@ -1,0 +1,50 @@
+# 24/7 website + Minecraft Java listener with a fixed host:25565 address.
+# On the VM: docker compose up -d --build
+services:
+  skyshard:
+    build:
+      context: .
+      dockerfile: Dockerfile.share
+    # --no-public keeps the fixed VM IP:25565 direct; no relay address to change.
+    command: ["bun", "run", "share", "--no-public"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    ports:
+      - "3000:3000"
+      - "25565:25565"
+    environment:
+      PORT: "3000"
+      MC_PORT: "25565"
+      MC_HOST: "0.0.0.0"
+      MC_VERSION: "1.21.8"
+      MC_WHITELIST: "${MC_WHITELIST:-}"
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Oracle stops Always Free VMs whose CPU, network and memory all stay under
+  # 20% for a week. Holding a quarter of RAM keeps this one out of that bucket.
+  # Remove this service if you upgrade to Pay As You Go, or lower KEEPALIVE_FRACTION on a small AMD micro VM.
+  keepalive:
+    image: oven/bun:1.3.14
+    command: ["bun", "/keepalive.ts"]
+    restart: unless-stopped
+    init: true
+    environment:
+      KEEPALIVE_FRACTION: "0.25"
+    volumes:
+      - ./scripts/keepalive.ts:/keepalive.ts:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"

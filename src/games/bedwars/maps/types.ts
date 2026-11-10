@@ -22,7 +22,11 @@ export interface GeneratorSpot {
 }
 
 export interface Npc {
-  kind: 'shop' | 'upgrades' | 'dummy'
+  /**
+   * Arenas have shopkeepers, upgrade keepers and training dummies. The hub
+   * adds one keeper per gateway: bedwars, practice, solo, wardrobe and rooms.
+   */
+  kind: 'shop' | 'upgrades' | 'dummy' | 'bedwars' | 'practice' | 'solo' | 'wardrobe' | 'rooms'
   team?: TeamId
   x: number
   y: number
@@ -30,11 +34,23 @@ export interface Npc {
   yaw: number
 }
 
+/** A chest block on the map, and whose storage it opens. */
+export interface ChestSpot {
+  kind: 'team' | 'personal'
+  x: number
+  y: number
+  z: number
+  /** Set for a team chest: only that team may open it. */
+  team?: TeamId
+}
+
 export interface MapMeta {
   name: string
   bases: TeamBase[]
   generators: GeneratorSpot[]
   npcs: Npc[]
+  /** Team and ender chests placed on the bases. */
+  chests?: ChestSpot[]
   /** Floating labels for test stations and generators. */
   labels: { text: string; x: number; y: number; z: number }[]
   lobby: { spawn: [number, number, number, number]; box: [number, number, number, number, number, number] } | null

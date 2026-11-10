@@ -18,7 +18,7 @@ import { TEAM_COLORS, type TeamId } from '../blocks'
 import { item, placedBlock } from '../items'
 import type { AtlasLayout } from '../../../engine/render/atlas-layout'
 import { blockCube } from '../../../engine/render/entities'
-import { itemModel } from './item-models'
+import { itemModel, swordModel } from './item-models'
 import { setBoxUV } from './avatar'
 
 /** The first-person arm and held item, drawn in its own scene over the world. */
@@ -67,7 +67,7 @@ export class ViewModel {
       m.position.set(0, -0.02, 0.12)
     }
     this.hand.add(this.arm, outer)
-    this.hand.position.set(0.4, -0.36, -0.8)
+    this.hand.position.set(0.37, -0.34, -0.8)
     this.hand.rotation.set(0.15, 0.2, 0)
     this.scene.add(this.hand)
     // The swing arc: a soft additive streak that follows the blade through the air.
@@ -133,18 +133,28 @@ export class ViewModel {
       m.rotation.set(0.1, 0.7, 0)
       this.held = m
     } else {
-      const model = itemModel(def.id)
+      const model = def.kind === 'sword' ? (swordModel(def.id) ?? itemModel(def.id)) : itemModel(def.id)
       if (!model) return
       const g = model.group
       if (def.kind === 'shield') {
         g.scale.setScalar(0.045)
         g.position.set(-0.01, 0.1, -0.02)
         g.rotation.set(0.05, Math.PI / 2 - 0.15, 0)
+      } else if (def.kind === 'sword') {
+        // A real blade points up out of the grip; turn it 45° across the view so the
+        // tip sits near the crosshair and the guard stays in the hand.
+        g.scale.setScalar(0.026)
+        g.position.set(-0.02, 0.03, -0.08)
+        g.rotation.set(0.08, 0.5, Math.PI / 4 - 0.04)
+      } else if (def.kind === 'tool') {
+        g.scale.setScalar(0.026)
+        g.position.set(-0.03, 0.06, -0.1)
+        g.rotation.set(0.16, 0.5, Math.PI / 2 + 0.34)
       } else {
-        // Handle at the group origin, so the blade sweeps up and across the view.
-        g.scale.setScalar(0.036)
-        g.position.set(-0.02, 0.11, -0.1)
-        g.rotation.set(0.22, 0.55, Math.PI / 2 + 0.28)
+        // Food, potions and the rest sit in the palm and face the camera.
+        g.scale.setScalar(0.03)
+        g.position.set(-0.02, 0.08, -0.09)
+        g.rotation.set(0.1, 0.35, 0.35)
       }
       const tier = def.tier ?? 0
       if (def.kind === 'sword' || def.kind === 'tool') {
@@ -188,8 +198,8 @@ export class ViewModel {
     const nibble = eating ? Math.sin(performance.now() / 60) * 0.03 : 0
 
     this.hand.position.set(
-      0.4 + bobX - chop * 0.24 - sh * 0.24 - draw * 0.15 - this.swayX * 0.05 + punch * 0.02,
-      -0.36 + bobY + lift * 0.1 - dip + sh * 0.08 + draw * 0.06 + nibble + this.swayY * 0.03 - punch * 0.03,
+      0.37 + bobX - chop * 0.24 - sh * 0.24 - draw * 0.15 - this.swayX * 0.05 + punch * 0.02,
+      -0.34 + bobY + lift * 0.1 - dip + sh * 0.08 + draw * 0.06 + nibble + this.swayY * 0.03 - punch * 0.03,
       -0.8 - sweep * 0.16 + draw * 0.18 + punch * 0.08,
     )
     this.hand.rotation.set(

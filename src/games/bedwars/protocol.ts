@@ -38,6 +38,11 @@ export type ClientMessage =
   | { t: 'buy'; offer: string }
   | { t: 'upgrade'; id: UpgradeId }
   | { t: 'swap'; a: number; b: number }
+  /** Right-click a chest block: opens the team's chest or your own ender chest. */
+  | { t: 'chest'; x: number; y: number; z: number }
+  /** Swap one slot between the open chest and your inventory. */
+  | { t: 'chestSwap'; kind: ChestKind; a: ChestRef; b: ChestRef }
+  | { t: 'chestClose' }
   | { t: 'team'; team: TeamId }
   | { t: 'start' }
   /** Host only, before a round: bots on or off, and optionally their level. */
@@ -51,6 +56,13 @@ export type ClientMessage =
   | { t: 'throw' }
   /** Your cosmetics, as a look code (look.ts); the server validates it. */
   | { t: 'look'; look: string }
+
+export type ChestKind = 'team' | 'personal'
+export type ChestSide = 'chest' | 'inventory'
+export interface ChestRef {
+  side: ChestSide
+  index: number
+}
 
 export interface PlayerView {
   id: number
@@ -77,6 +89,8 @@ export interface PlayerView {
   invisible: boolean
   /** Skin, cape, trail and kill effect, as a look code (look.ts). */
   look: string
+  /** Per-round score, for the Tab player list. */
+  stats: { kills: number; finals: number; beds: number; deaths: number }
 }
 
 export type PlayerDelta = Partial<PlayerView> & { id: number }
@@ -111,6 +125,8 @@ export interface WeatherView {
 export interface GameView {
   phase: Phase
   mode: GameRules['mode']
+  /** Max players per team, for the scoreboard's mode label. */
+  teamSize: number
   /** Ticks since the round started, or until the countdown ends, as of `clockTick`; clients extrapolate. */
   clock: number
   clockTick: number
@@ -195,6 +211,8 @@ export type ServerMessage =
   | { t: 'effect'; effect: number; x: number; y: number; z: number }
   /** Lobby map vote: every layout with its votes, and the one loaded now. */
   | { t: 'votes'; maps: { id: string; name: string; votes: number }[]; current: string }
+  /** The open chest's contents; `kind` null closes the window. */
+  | { t: 'chest'; kind: ChestKind | null; slots: (Slot | null)[] }
   /** End of a round: the winner and everyone's stats, for the end screen. */
   | { t: 'summary'; winner: TeamId | 'draw'; players: RoundStats[]; lobbyIn: number }
   /** Lobby settings beyond the game view: the bot level. Sent on connect and when it changes. */
@@ -252,10 +270,15 @@ const PLAYER_FIELDS: Field[] = [
   field('bot', ...bool),
   field('invisible', ...bool),
   field('look', (w, v) => w.string(v), (r) => r.string()),
+  field(
+    'stats',
+    (w, v) => w.uint(v.kills).uint(v.finals).uint(v.beds).uint(v.deaths),
+    (r) => ({ kills: r.uint(), finals: r.uint(), beds: r.uint(), deaths: r.uint() }),
+  ),
 ]
 
 function writeGame(w: ByteWriter, g: GameView) {
-  w.u8(PHASES.indexOf(g.phase)).string(g.mode).int(g.clock).uint(g.clockTick)
+  w.u8(PHASES.indexOf(g.phase)).string(g.mode).uint(g.teamSize).int(g.clock).uint(g.clockTick)
   w.stringOrNull(g.next?.label ?? null)
   if (g.next) w.int(g.next.in)
   w.uint(g.teams.length)
@@ -269,6 +292,7 @@ function writeGame(w: ByteWriter, g: GameView) {
 function readGame(r: ByteReader): GameView {
   const phase = PHASES[r.u8()]
   const mode = r.string() as GameView['mode']
+  const teamSize = r.uint()
   const clock = r.int()
   const clockTick = r.uint()
   const label = r.stringOrNull()
@@ -279,7 +303,7 @@ function readGame(r: ByteReader): GameView {
   const winner = r.stringOrNull() as GameView['winner']
   const weatherKind = r.stringOrNull() as WeatherKind | null
   const weather = weatherKind === null ? null : { kind: weatherKind, left: r.int() }
-  return { phase, mode, clock, clockTick, next, teams, host: host === 0 ? null : host - 1, bots, winner, weather }
+  return { phase, mode, teamSize, clock, clockTick, next, teams, host: host === 0 ? null : host - 1, bots, winner, weather }
 }
 
 function encodeTick(m: Extract<ServerMessage, { t: 'tick' }>): Bytes {

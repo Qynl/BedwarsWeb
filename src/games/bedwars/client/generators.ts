@@ -5,6 +5,12 @@ import type { GeneratorSpot } from '../maps/types'
 
 const ROMAN = ['', 'I', 'II', 'III']
 
+/** The sidebar's next-drop countdowns: one line per gem generator kind. */
+export interface GeneratorTimers {
+  diamond?: { tier: number; seconds: number }
+  emerald?: { tier: number; seconds: number }
+}
+
 /**
  * Over each diamond and emerald generator: a spinning gem block, the
  * generator's tier and a countdown to its next drop, updated from the
@@ -13,10 +19,12 @@ const ROMAN = ['', 'I', 'II', 'III']
 export class GeneratorDisplays {
   readonly group = new Group()
   private items: { spot: GeneratorSpot; gem: Mesh; label: Sprite | null; key: string; index: number }[] = []
+  private timers: GeneratorTimers = {}
 
   load(spots: GeneratorSpot[]) {
     this.group.clear()
     this.items = []
+    this.timers = {}
     spots.forEach((spot, index) => {
       if (spot.kind !== 'diamond' && spot.kind !== 'emerald') return
       const color = spot.kind === 'diamond' ? '#5fe0d8' : '#38d36b'
@@ -29,11 +37,16 @@ export class GeneratorDisplays {
 
   /** `list` entries: [generator index, ticks to the next drop, tier]. */
   update(list: [number, number, number][]) {
+    const timers: GeneratorTimers = {}
     for (const [index, ticks, tier] of list) {
       const it = this.items.find((i) => i.index === index)
       if (!it) continue
       const name = it.spot.kind === 'diamond' ? 'Diamond' : 'Emerald'
-      const key = `${tier}:${Math.ceil(ticks / TPS)}`
+      const seconds = Math.ceil(ticks / TPS)
+      const kind = it.spot.kind as 'diamond' | 'emerald'
+      const best = timers[kind]
+      if (!best || seconds < best.seconds) timers[kind] = { tier, seconds }
+      const key = `${tier}:${seconds}`
       if (key === it.key) continue
       it.key = key
       if (it.label) {
@@ -45,6 +58,12 @@ export class GeneratorDisplays {
       it.label.position.set(it.spot.pos[0], it.spot.pos[1] + 3.45, it.spot.pos[2])
       this.group.add(it.label)
     }
+    this.timers = timers
+  }
+
+  /** What the HUD needs for its Diamond/Emerald countdown lines. */
+  get nextDrops(): GeneratorTimers {
+    return this.timers
   }
 
   frame(seconds: number) {

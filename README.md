@@ -4,12 +4,22 @@ A complete bed-wars game in the browser and on the desktop: four teams on
 floating islands, beds to defend, forges and diamond and emerald generators,
 a shop and team upgrades, bridging, melee with knockback, bots that play a
 full round (and wrap their bed in wool first), bows, fireballs, TNT, rift
-pearls, bridge eggs and potions, five themed arenas with a lobby vote,
+pearls, bridge eggs and potions, team and ender chests, five themed arenas,
 team chat, sound effects and particles made in code, and a practice sandbox
 with a station for every mechanic. It
 runs on Freebuff Sites with browser-hosted casual multiplayer over managed
 realtime, offline in the page against bots, on an optional authoritative Node
-server, or as an Electron app.
+server, or as an Electron app. A real Minecraft: Java Edition client can also
+join a live room through the optional Java gateway (`bun run minecraft`).
+
+On the Node server there is no game menu to fight through: you join the
+server and spawn in a shared voxel **hub**, walk through the BEDWARS gate, up
+to one of five keepers and right-click them, or press B to pick a bed-wars
+map (random or by name). The other keepers open practice, a private bot round,
+the wardrobe and the optional server browser. Matches are made for you, start on their own, fill empty seats with
+bots and let latecomers take a bot's place, so the server always has a round
+going. A parkour tower and a `/list` command give the hub its own life while
+you wait for a match.
 
 What makes it SKYSHARD rather than a stock bed-wars game:
 
@@ -45,6 +55,8 @@ bun run package        # installers in release/: .dmg/.zip on macOS, .exe on Win
 bun run build          # dist/client + dist/buffcraft/index.js, for Freebuff Sites
 bun run build:node     # dist/node-client + dist/server/main.js, for Node/Electron
 bun run start          # serve the build on :3000 (see "Hosting for friends" below)
+bun run minecraft      # Java Edition gateway on :25565 (see "Real Minecraft" below)
+bun run share          # website + Java gateway + a free public relay, one command
 ```
 
 Checks:
@@ -60,19 +72,29 @@ bun run loadtest       # capacity numbers (rooms, players, CPU, bandwidth)
 
 ## Playing
 
-The menu offers three ways in:
+The menu offers several ways in:
 
+- **Join server (Node/Electron)**: the front door is the hub described below,
+  with no menus between you and the game. It shows who is online, which matches
+  are running and a parkour tower. Play by walking through the BEDWARS gate,
+  right-clicking the Bedwars keeper, or pressing B:
+  - **Bedwars** — the server drops you on the match deck, counts ten seconds and
+    starts; bots fill the empty teams. Anyone joining a round already in play
+    takes a bot's seat, items and all, and only watches when every seat has a
+    person in it. There is no pre-game card to click through. Pick a team with
+    `/team red` (or blue, green, yellow) before the start.
+  - **Solo vs bots** — a private room of your own, started automatically.
+  - **Practice sandbox** — the test platform, with `/bot` for sparring.
+  - **Wardrobe** — skins, capes, trails and kill effects.
+  - **Server browser** — an optional list of every public room, its arena,
+    state, people and open seats, live.
+  Esc opens the pause card anywhere (settings, wardrobe, server hub, leave).
+  The end-of-round screen can send you straight back to the hub or into a new
+  match.
 - **Play online (Sites)**: Host creates a room; Join uses its code or invite link.
   Four people at most, including the host. The host must keep the tab visible
-  and running; there is no host migration or persistent match history.
-- **Play online (Node/Electron)**: shows how many people are on the server and every public
-  room with its arena, state and open seats. Quick play joins the fullest lobby
-  with room (or a round with a bot seat to take); Join picks one; Create makes a
-  room, public or invite only. In a room, Esc opens the lobby: who is in it, an
-  invite link to copy, team choice, the arena vote, and for the host bots, their
-  level and Start. Anyone joining mid-round takes a bot's place, items and all,
-  and only watches when every seat has a person in it. An invite link
-  (`?room=name`) opens the room list ready to join that room.
+  and running; there is no host migration or persistent match history. A Node
+  invite link (`?room=name`) joins that room straight away.
 - **Solo against bots**: the whole game runs in your window against three bots
   and starts by itself after five seconds. No server needed.
 - **Practice sandbox**: a test platform with a station for each mechanic
@@ -81,9 +103,11 @@ The menu offers three ways in:
   spawns sparring bots (`/bot 2 hard` for two hard ones), `/nobots` clears
   them, `/help` lists the rest.
 
-URL parameters skip the menu: `?play=1&world=sandbox`, `?play=1&offline=1`,
-`&room=name`, `&private=1` (off the room list), `&fast=1` (the round's
-timeline runs ten times faster). `GET /api/rooms` returns the room list as JSON.
+URL parameters skip the menu: `?play=1&world=hub` (the server hub),
+`?play=1&world=sandbox`, `?play=1&offline=1`, `&room=name`, `&private=1`
+(off the room list), `&fast=1` (the round's timeline runs ten times faster),
+`&auto=1` (a matchmaking room; every server round starts itself) and `&map=skyreach`
+(its arena). `GET /api/rooms` returns the room list as JSON.
 
 ### Controls
 
@@ -97,19 +121,44 @@ two keys of your choice. The defaults:
 | Sneak | Shift | slow, and you cannot fall off an edge: hold it to bridge |
 | Sprint | Left Ctrl or R, or double-tap W | hold, toggle or always on (Settings, Game) |
 | Attack, break | Left click | hold on a block to break it |
-| Place, use | Right click | hold to keep placing; also eat, drink, throw, raise a shield, shop |
+| Place, use | Right click | hold to keep placing; also eat, drink, throw, raise a shield, open a chest, shop |
 | Bow | Hold right click | release to fire; a full second is a full draw |
 | Hotbar | 1 to 9, mouse wheel | |
 | Drop | Q | throw one of what you hold; Ctrl+Q throws the stack |
 | Inventory | E | click two slots to swap them |
-| Nearest shop | B | |
-| Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands |
-| Player list | Tab | |
+| Nearest shop | B | in the hub, opens the map picker; in a match, the nearest shop |
+| Chat | T or Enter | team chat in a round; start with ! for everyone, / for commands (`/team red`) |
+| Player list | Tab | full scoreboard: map, teams, beds and every player's kills, finals, beds and deaths |
 | Debug | F3 | position, speed, target, frame rate |
-| Pause, menus | Esc | the lobby screen before a round, the pause menu during one |
+| Pause, menus | Esc | the pause card anywhere; before a round a one-line start strip stays at the top |
 
 In a browser, Ctrl+W closes the tab, so sprint with R or a double-tap there
 (the desktop app has no such problem).
+
+### The hub
+
+The hub is an ordinary authoritative room (`mode: 'hub'`) running the same
+physics and chat as a match: people walk around, see each other's skins and
+name tags, talk in one channel and press Tab for the player list. The island
+is generated in `maps/hub.ts` — a quartz plaza and fountain, five keeper
+podiums, the BEDWARS arch and a parkour tower of two-by-two quartz pads that
+climbs from a gold start pad to a gold finish. Walking through the arch joins a
+random match straight away; the Bedwars keeper or B opens the map picker,
+where Random or any named arena can be chosen. The chosen map is always shown
+on the scoreboard side panel, under the Bed Wars heading. Nothing opens a lobby
+card. Times are local to the browser; the best is kept in local storage.
+`/spawn` returns to the deck, `/parkour` teleports to the start and `/list`
+names everyone in the hub. Nothing can be built or broken, and swings and
+falls are harmless: the hub is the lobby, not a fight, and matches start on
+their own.
+
+The keepers are map metadata (`Npc.kind`), drawn by the client with their own
+looks and name tags; right-clicking one moves you into a room or opens the
+wardrobe or the optional server browser. A transfer is a clean reconnect:
+`main.ts` tears the current game down, keeps the name, and starts the new world
+from the target in the URL (`world`, `room`, `map`, `auto`). The server's room
+key includes the arena and `auto` flag, so a friend can be invited into the
+exact matchmaking room with the invite link.
 
 ### Moving and bridging
 
@@ -168,12 +217,168 @@ sprint, view bobbing, frame counter), Controls, Video (render distance,
 quality, full screen) and Audio (volume). They apply at once and are kept in
 the browser's (or the desktop app's) local storage.
 
+## Real Minecraft (Java Edition)
+
+Yes: a real Minecraft: Java Edition client can join the game. `bun run
+minecraft` opens a small Java Edition server that joins a normal SKYSHARD room
+as one more player and translates the world, entities and actions in both
+directions. It is a bridge, not a proxy: the same bots and browser players are
+in the round, and the Java player takes a bot seat like anyone else.
+
+Requirements: the game server is running (for example
+`bun run build:node && node dist/server/main.js`, or `bun run dev:node` with
+`MC_GAME_URL` pointing at its port), Bun is installed, and the client uses
+**Minecraft Java Edition 1.21.8** — the version the gateway speaks. Other client
+versions show as incompatible unless you set `MC_VERSION` to a version both the
+client and `minecraft-protocol` support.
+
+```sh
+bun run minecraft
+# Minecraft → Multiplayer → Direct Connection → localhost:25565
+```
+
+The listener is **offline mode**: it does not check Mojang sessions, so any
+username works and no password is ever asked for. (You still need a legitimate
+launcher and account to run the Minecraft client itself.) It defaults to
+`127.0.0.1`; set `MC_HOST=0.0.0.0` only on a trusted LAN, because anyone who can
+reach the port can use any name.
+
+Useful environment variables:
+
+```sh
+MC_PORT=25565                  # TCP port
+MC_HOST=0.0.0.0                # listen on the LAN instead of localhost
+MC_VERSION=1.21.8              # must match the client
+MC_WHITELIST=Alice,Bob          # optional; empty means anyone
+MC_GAME_URL='ws://127.0.0.1:3000/game?world=arena&room=mc&auto=1'
+```
+
+The gateway replaces any `name` in `MC_GAME_URL` with the Java player's own
+name, so one listener can serve several clients at once.
+
+What crosses the bridge: terrain, sky light and heightmaps; bots and browser
+players as living entities; player movement, look, sneak and sprint; health and
+deaths; the hotbar/inventory and team-coloured wool; block placing and
+breaking; chat, team chat and system messages; and the round clock/events. The
+shop is available from Java chat: `/shop` lists offer ids, `/buy wool` buys,
+and `/upgrade protection` buys a team upgrade when you are at the keeper.
+`/tp x y z` and the other sandbox commands work where the room allows them.
+
+It is intentionally a one-version, offline-mode bridge. The hosted Sites/Cloud
+preview and Vercel only forward HTTP and WebSocket traffic and a browser cannot
+accept raw TCP, so those deployments cannot be a Minecraft server by
+themselves. The Java gateway is not a way to proxy Hypixel or any other remote
+server; it hosts SKYSHARD's own rooms. Final-death spectator flow and the shop
+GUI are simpler than in the browser; the command fallbacks above cover the
+shop.
+
+### Real Minecraft in a browser tab (beta)
+
+The menu's **Real Minecraft (1.8.9 beta)** opens `src/mcclient/`: our own
+browser client, not a launcher. It speaks the Java Edition 1.8.9 wire protocol
+directly, logs in with an offline username, reads normal and bulk chunk packets,
+renders flat-coloured blocky terrain, and keeps the connection alive. It walks
+with collision and gravity, jumps, sprints, sneaks, toggles creative-style
+flight with **F**, breaks and places blocks with a nine-slot hotbar, shows other
+players and mobs as coloured bodies, and displays chat, hearts and hunger.
+
+**The proxy is ours.** `bun run start`, `bun run share`, `bun run dev:node` and
+the desktop app expose `/api/mc-proxy` (`src/server/mcproxy.ts`), a small
+net-browserify-compatible WebSocket-to-TCP bridge. The browser detects it first;
+static/Sites builds, which have no Node process, fall back to the public
+`pproxy.rom1504.fr`. That means own-server players never go through a third
+party, and no port forwarding is needed. The bridge opens TCP destinations for
+the browser, so only expose it on a deployment you trust; tokens are single-use
+and tunnels are capped.
+
+It is still **not full Eaglercraft parity**: there are no Mojang assets, skins or
+name tags, animation models, inventory containers, crafting, resource packs,
+server-list UI or online-mode authentication. Only **offline-mode**
+(`online-mode=false`) servers work; an online-mode server sends an encryption
+request and the client refuses it. The codec and block palette live in
+`src/mcclient/protocol.ts` and `src/mcclient/world.ts`; the live 1.8.9 test is
+`tests/mcclient-live.test.ts`, and the proxy test is `tests/mcproxy.test.ts`.
+
+### One command: website + Java server + free public address
+
+A static website cannot accept a Minecraft connection by itself: the client
+speaks raw TCP and browsers/HTTP hosts cannot listen on a TCP port. The free
+path here is to run the website's Node/Bun process as the listener and use a
+free TCP relay for the public address. `bun run share` does exactly that in one
+command:
+
+```sh
+bun run share
+```
+
+It prints:
+
+```text
+Website:       http://localhost:3000
+Minecraft:     localhost:25565
+Public Minecraft: quiet-river.e4mc.link
+```
+
+Friends paste the public domain into **Multiplayer → Direct Connection** with a
+vanilla Java 1.21.8 client. There is no account, no port forwarding and no
+separate Minecraft host: e4mc is a free public TCP relay, and the game itself
+still runs in this process. Only the host runs the command.
+
+The relay helper needs **Java 11+** (the Minecraft launcher normally includes
+one; `bun run share` also looks inside the launcher's runtime folder). Without
+Java, `bun run share` still starts the website and local/LAN Minecraft and
+explains what is missing. It downloads the MIT-licensed `e4mcbiat` helper once
+into `.cache/`; set `E4MC_JAR=/path/to.jar` to reuse one, `JAVA=/path/to/java`
+to pick a runtime, or `MC_TUNNEL_CMD='...'` to use your own tunnel.
+`bun run share --no-public` keeps everything local.
+
+```sh
+PORT=3000 MC_PORT=25565 bun run share          # pick ports
+MC_PUBLIC_URL=my-host:25565 bun run share      # advertise your own tunnel
+bun run share --no-public                      # browser + LAN only
+```
+
+| Where it runs | Browser game | Java client | Public without port forwarding |
+| --- | --- | --- | --- |
+| Freebuff Sites / Vercel / static host | yes | no | no |
+| `npm start` on Node | yes | localhost/LAN | only with a tunnel |
+| `bun run share` on a PC or free VM | yes | yes | yes, through e4mc |
+
+A container with Java and both ports exposed is also included:
+
+```sh
+docker build -f Dockerfile.share -t skyshard-share .
+docker run --rm -p 3000:3000 -p 25565:25565 skyshard-share
+```
+
+On a host that only gives you one HTTP port (some free web services), the
+website port is enough for the e4mc relay because the tunnel is outbound; the
+provider must allow outbound UDP/HTTPS for e4mc. A small free VM is the least
+surprising place to keep it running.
+
+This is a session relay, not a 24/7 host: the tab/process must stay running,
+the address changes when the relay reconnects, and e4mc is a third-party free
+service. For an always-on free server with a fixed address, see
+**[HOSTING.md](HOSTING.md)**: an Oracle Cloud Always Free VM with a Reserved
+Public IP, `compose.yaml`, and a keepalive that survives Oracle's idle policy.
+That is the recommended 24/7 setup; `bun run share` is still the quick session
+option. Either way the public listener is offline-mode, so use
+`MC_WHITELIST=...` and only share it with people you trust.
+
+The e4mc domain routes to the local Minecraft port; the website menu shows the
+address automatically when a server was started by `bun run share` (or when a
+separate gateway is running and `MC_PORT` is set).
+
+The translation lives in `src/games/bedwars/minecraft.ts`; the CLI is
+`scripts/minecraft.ts`; `tests/minecraft.test.ts` logs in with a protocol
+client and checks the chunks, kit and chat round trip.
+
 ## Maps
 
 Every arena is generated in code from an `ArenaLayout` in
 `src/games/bedwars/maps/arena.ts` (where the bases, diamond islands and middle
 sit, a theme, a seed), so the same layout always builds the same world, in a
-few milliseconds. The lobby vote offers them all; Skyreach is the default.
+few milliseconds. Matchmaking picks one; Skyreach is the default.
 
 - **Skyreach** (forest): bases on a cross. Stone-and-wood houses, mossy
   yards, flowers and young trees; big oaks and birches on the diamond islands;
@@ -210,7 +415,34 @@ every arena, and `tests/bots.test.ts` plays a round on each.
 New blocks for the themes (sand, sandstone, snow, ice, cobblestone, stone
 bricks, woods, quartz, terracotta, lanterns with `lightLevel`, team-stained
 glass and more) are map blocks only; each has its own pattern painted in
-`render/textures.ts`. The game uses 66 of the 128 block ids a cell can hold.
+`render/textures.ts`. The game uses 68 of the 128 block ids a cell can hold.
+
+### Scoreboard, tab list and shop
+
+The right-hand panel is the in-game scoreboard, always on: BED WARS, the map
+name, the mode (Solos, Doubles...), the next event and timer, live diamond and
+emerald spawn countdowns, each team's bed mark and living players, then your
+resources and round score. Hold Tab for the full player table, grouped by team
+with kills, finals, beds and deaths. Team upgrades are announced to the whole
+match, and the end screen offers Play Again or Return to Lobby.
+
+The item shop starts on **Quick Buy**, a Hypixel-style page of the most useful
+purchases (`wool`, a sword, armour, a golden apple, a fireball, a pickaxe, a
+potion and a bridge egg); every item also has its own category and a one-line
+description of what it does. The map picker draws a small generated thumbnail
+of each arena's sky, ground and four bases, with the number of people playing
+it.
+
+### Chests
+
+Every base has two chests by the shop side: a **team chest** and a personal
+**ender chest**. Right-click either one to open a 27-slot window; click one
+slot and then another to move a stack between the chest and your inventory.
+The team chest is shared live with everyone on your team, and only your team
+may open it. The ender chest is private to you, keeps its contents when you
+die, can be opened at any base's ender chest, and empties when a new round
+starts along with the team chest. Both are ordinary map blocks, so they cannot
+be broken, and they sit clear of the lanes bots bridge along.
 
 ## Freebuff Sites
 

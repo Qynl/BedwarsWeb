@@ -14,8 +14,14 @@ export interface TimelineEvent {
   label: string
 }
 
+/**
+ * What a room is for: a bed-wars round, the practice sandbox, or the network
+ * hub everyone spawns in before choosing a game.
+ */
+export type GameMode = 'arena' | 'sandbox' | 'hub'
+
 export interface GameRules {
-  mode: 'arena' | 'sandbox'
+  mode: GameMode
   teams: TeamId[]
   teamSize: number
   /** Humans needed before the countdown starts on its own. */
@@ -68,6 +74,24 @@ export function arenaRules(overrides: Partial<GameRules> = {}): GameRules {
 
 export function sandboxRules(overrides: Partial<GameRules> = {}): GameRules {
   return arenaRules({ mode: 'sandbox', bots: false, minPlayers: 1, respawnTicks: 2 * TPS, timeline: [], cheats: true, ...overrides })
+}
+
+/** The shared hub: no teams, no round, no build or fight, and nobody ever wins it. */
+export function hubRules(overrides: Partial<GameRules> = {}): GameRules {
+  return arenaRules({
+    mode: 'hub',
+    teams: [],
+    teamSize: 1,
+    minPlayers: Number.MAX_SAFE_INTEGER,
+    countdownTicks: Number.MAX_SAFE_INTEGER,
+    bots: false,
+    respawnTicks: TPS,
+    endTicks: Number.MAX_SAFE_INTEGER,
+    timeline: [],
+    cheats: false,
+    maps: [],
+    ...overrides,
+  })
 }
 
 /** The same timeline, faster, for trying the round flow without waiting half an hour. */

@@ -15,6 +15,10 @@ export interface Offer {
   name: string
   category: OfferCategory
   icon: string
+  /** Shown under the name in the shop, like an item's lore. */
+  description: string
+  /** Also appears in the Quick Buy tab. */
+  quick?: boolean
   /** Cost for the next purchase; tools cost more per tier. */
   cost: { resource: Resource; amount: number }[]
   give: OfferGive
@@ -25,38 +29,38 @@ const gold = (amount: number) => [{ resource: 'gold' as const, amount }]
 const emerald = (amount: number) => [{ resource: 'emerald' as const, amount }]
 
 export const OFFERS: Offer[] = [
-  { id: 'wool', name: 'Wool ×16', category: 'blocks', icon: 'wool', cost: iron(4), give: { kind: 'item', item: 'wool', count: 16 } },
-  { id: 'clay', name: 'Hardened clay ×16', category: 'blocks', icon: 'clay', cost: iron(12), give: { kind: 'item', item: 'clay', count: 16 } },
-  { id: 'glass', name: 'Glass ×4', category: 'blocks', icon: 'glass', cost: iron(12), give: { kind: 'item', item: 'glass', count: 4 } },
-  { id: 'planks', name: 'Planks ×16', category: 'blocks', icon: 'planks', cost: gold(4), give: { kind: 'item', item: 'planks', count: 16 } },
-  { id: 'moonstone', name: 'Moonstone ×12', category: 'blocks', icon: 'moonstone', cost: iron(24), give: { kind: 'item', item: 'moonstone', count: 12 } },
-  { id: 'obsidian', name: 'Obsidian ×4', category: 'blocks', icon: 'obsidian', cost: emerald(4), give: { kind: 'item', item: 'obsidian', count: 4 } },
+  { id: 'wool', name: 'Wool ×16', category: 'blocks', icon: 'wool', description: '16 blocks. Cheap, quick defence.', quick: true, cost: iron(4), give: { kind: 'item', item: 'wool', count: 16 } },
+  { id: 'clay', name: 'Hardened clay ×16', category: 'blocks', icon: 'clay', description: '16 blocks. Tougher than wool.', cost: iron(12), give: { kind: 'item', item: 'clay', count: 16 } },
+  { id: 'glass', name: 'Glass ×4', category: 'blocks', icon: 'glass', description: '4 blocks. See-through defence.', cost: iron(12), give: { kind: 'item', item: 'glass', count: 4 } },
+  { id: 'planks', name: 'Planks ×16', category: 'blocks', icon: 'planks', description: '16 blocks. Blast-resistant wood.', cost: gold(4), give: { kind: 'item', item: 'planks', count: 16 } },
+  { id: 'moonstone', name: 'Moonstone ×12', category: 'blocks', icon: 'moonstone', description: '12 blocks. Strong end stone.', cost: iron(24), give: { kind: 'item', item: 'moonstone', count: 12 } },
+  { id: 'obsidian', name: 'Obsidian ×4', category: 'blocks', icon: 'obsidian', description: '4 blocks. Blast-proof.', cost: emerald(4), give: { kind: 'item', item: 'obsidian', count: 4 } },
 
-  { id: 'stone_sword', name: 'Stone sword', category: 'melee', icon: 'stone_sword', cost: iron(10), give: { kind: 'sword', item: 'stone_sword' } },
-  { id: 'iron_sword', name: 'Iron sword', category: 'melee', icon: 'iron_sword', cost: gold(7), give: { kind: 'sword', item: 'iron_sword' } },
-  { id: 'diamond_sword', name: 'Diamond sword', category: 'melee', icon: 'diamond_sword', cost: emerald(4), give: { kind: 'sword', item: 'diamond_sword' } },
+  { id: 'stone_sword', name: 'Stone sword', category: 'melee', icon: 'stone_sword', description: 'Deals 5 damage. Upgrades your wood sword.', quick: true, cost: iron(10), give: { kind: 'sword', item: 'stone_sword' } },
+  { id: 'iron_sword', name: 'Iron sword', category: 'melee', icon: 'iron_sword', description: 'Deals 6 damage.', cost: gold(7), give: { kind: 'sword', item: 'iron_sword' } },
+  { id: 'diamond_sword', name: 'Diamond sword', category: 'melee', icon: 'diamond_sword', description: 'Deals 7 damage.', cost: emerald(4), give: { kind: 'sword', item: 'diamond_sword' } },
 
-  { id: 'chain_armor', name: 'Chain armour', category: 'armor', icon: 'chain_armor', cost: iron(24), give: { kind: 'armor', tier: 'chain' } },
-  { id: 'iron_armor', name: 'Iron armour', category: 'armor', icon: 'iron_armor', cost: gold(12), give: { kind: 'armor', tier: 'iron' } },
-  { id: 'diamond_armor', name: 'Diamond armour', category: 'armor', icon: 'diamond_armor', cost: emerald(6), give: { kind: 'armor', tier: 'diamond' } },
+  { id: 'chain_armor', name: 'Chain armour', category: 'armor', icon: 'chain_armor', description: 'Chain armour. Better than leather.', cost: iron(24), give: { kind: 'armor', tier: 'chain' } },
+  { id: 'iron_armor', name: 'Iron armour', category: 'armor', icon: 'iron_armor', description: 'Iron armour. Sturdier.', quick: true, cost: gold(12), give: { kind: 'armor', tier: 'iron' } },
+  { id: 'diamond_armor', name: 'Diamond armour', category: 'armor', icon: 'diamond_armor', description: 'Diamond armour. The best.', cost: emerald(6), give: { kind: 'armor', tier: 'diamond' } },
 
-  { id: 'shears', name: 'Shears', category: 'tools', icon: 'shears', cost: iron(20), give: { kind: 'shears' } },
-  { id: 'pickaxe', name: 'Pickaxe', category: 'tools', icon: 'wood_pickaxe', cost: iron(10), give: { kind: 'pickaxe' } },
-  { id: 'axe', name: 'Axe', category: 'tools', icon: 'wood_axe', cost: iron(10), give: { kind: 'axe' } },
+  { id: 'shears', name: 'Shears', category: 'tools', icon: 'shears', description: 'Cut through wool quickly.', cost: iron(20), give: { kind: 'shears' } },
+  { id: 'pickaxe', name: 'Pickaxe', category: 'tools', icon: 'wood_pickaxe', description: 'Mine blocks faster. Upgrades each tier.', quick: true, cost: iron(10), give: { kind: 'pickaxe' } },
+  { id: 'axe', name: 'Axe', category: 'tools', icon: 'wood_axe', description: 'Chop wood and wool. Upgrades each tier.', cost: iron(10), give: { kind: 'axe' } },
 
-  { id: 'golden_apple', name: 'Golden apple', category: 'utility', icon: 'golden_apple', cost: gold(3), give: { kind: 'item', item: 'golden_apple', count: 1 } },
-  { id: 'shield', name: 'Shield', category: 'utility', icon: 'shield', cost: gold(5), give: { kind: 'item', item: 'shield', count: 1 } },
-  { id: 'pearl', name: 'Rift pearl', category: 'utility', icon: 'pearl', cost: emerald(4), give: { kind: 'item', item: 'pearl', count: 1 } },
-  { id: 'bridge_egg', name: 'Bridge egg', category: 'utility', icon: 'bridge_egg', cost: emerald(1), give: { kind: 'item', item: 'bridge_egg', count: 1 } },
+  { id: 'golden_apple', name: 'Golden apple', category: 'utility', icon: 'golden_apple', description: 'Heals 4 hearts on use.', quick: true, cost: gold(3), give: { kind: 'item', item: 'golden_apple', count: 1 } },
+  { id: 'shield', name: 'Shield', category: 'utility', icon: 'shield', description: 'Hold right-click to block hits.', cost: gold(5), give: { kind: 'item', item: 'shield', count: 1 } },
+  { id: 'pearl', name: 'Rift pearl', category: 'utility', icon: 'pearl', description: 'Teleport to where it lands.', cost: emerald(4), give: { kind: 'item', item: 'pearl', count: 1 } },
+  { id: 'bridge_egg', name: 'Bridge egg', category: 'utility', icon: 'bridge_egg', description: 'Builds a bridge below it.', quick: true, cost: emerald(1), give: { kind: 'item', item: 'bridge_egg', count: 1 } },
 
-  { id: 'bow', name: 'Bow', category: 'ranged', icon: 'bow', cost: gold(12), give: { kind: 'item', item: 'bow', count: 1 } },
-  { id: 'arrows', name: 'Arrows ×8', category: 'ranged', icon: 'arrow', cost: gold(2), give: { kind: 'item', item: 'arrow', count: 8 } },
-  { id: 'fireball', name: 'Fireball', category: 'ranged', icon: 'fireball', cost: iron(40), give: { kind: 'item', item: 'fireball', count: 1 } },
-  { id: 'tnt', name: 'TNT', category: 'ranged', icon: 'tnt', cost: gold(4), give: { kind: 'item', item: 'tnt', count: 1 } },
+  { id: 'bow', name: 'Bow', category: 'ranged', icon: 'bow', description: 'Charge and fire arrows.', cost: gold(12), give: { kind: 'item', item: 'bow', count: 1 } },
+  { id: 'arrows', name: 'Arrows ×8', category: 'ranged', icon: 'arrow', description: '8 arrows for your bow.', cost: gold(2), give: { kind: 'item', item: 'arrow', count: 8 } },
+  { id: 'fireball', name: 'Fireball', category: 'ranged', icon: 'fireball', description: 'Knock players back and break blocks.', quick: true, cost: iron(40), give: { kind: 'item', item: 'fireball', count: 1 } },
+  { id: 'tnt', name: 'TNT', category: 'ranged', icon: 'tnt', description: 'Blast a hole in a defence.', cost: gold(4), give: { kind: 'item', item: 'tnt', count: 1 } },
 
-  { id: 'speed_potion', name: 'Speed (30 s)', category: 'potions', icon: 'speed_potion', cost: emerald(1), give: { kind: 'item', item: 'speed_potion', count: 1 } },
-  { id: 'jump_potion', name: 'Jump (30 s)', category: 'potions', icon: 'jump_potion', cost: emerald(1), give: { kind: 'item', item: 'jump_potion', count: 1 } },
-  { id: 'invisibility_potion', name: 'Invisibility (30 s)', category: 'potions', icon: 'invisibility_potion', cost: emerald(2), give: { kind: 'item', item: 'invisibility_potion', count: 1 } },
+  { id: 'speed_potion', name: 'Speed (30 s)', category: 'potions', icon: 'speed_potion', description: 'Speed I for 30 seconds.', quick: true, cost: emerald(1), give: { kind: 'item', item: 'speed_potion', count: 1 } },
+  { id: 'jump_potion', name: 'Jump (30 s)', category: 'potions', icon: 'jump_potion', description: 'Jump Boost for 30 seconds.', cost: emerald(1), give: { kind: 'item', item: 'jump_potion', count: 1 } },
+  { id: 'invisibility_potion', name: 'Invisibility (30 s)', category: 'potions', icon: 'invisibility_potion', description: 'Invisibility for 30 seconds.', cost: emerald(2), give: { kind: 'item', item: 'invisibility_potion', count: 1 } },
 ]
 
 /** Price of the next pickaxe or axe tier: [wood, second, third, diamond]. */

@@ -13,7 +13,7 @@ import {
   WebGLRenderer,
   type Object3D,
 } from 'three'
-import { AIR, blockDef, TEAM_COLORS, type TeamId } from '../blocks'
+import { AIR, blockDef, CHEST, ENDER_CHEST, TEAM_COLORS, type TeamId } from '../blocks'
 import { breakTicks, checkPlace } from '../../../engine/building'
 import { checkBreak } from '../beds'
 import { ATTACK_REACH, BLOCK_REACH, EYE_HEIGHT, SNEAK_EYE_HEIGHT, TICK_MS, TPS } from '../constants'
@@ -23,6 +23,8 @@ import type { MapMeta } from '../maps/types'
 import { IDLE_INPUT, lookDirection, playerBox, stepMovement, type MoveInput, type Mover } from '../../../engine/physics'
 import type { ClientMessage, GameView, PlayerView, SelfView, ServerMessage } from '../protocol'
 import type { BotLevel } from '../rules'
+import { HUB_PARKOUR, inHubGate } from '../maps/hub'
+import { ARENA_NAMES, fetchRooms, pickArenaRoom, type MatchTarget } from './rooms'
 import { raycastBlock, rayBox, type BlockHit } from '../../../engine/raycast'
 import { fromBase64, World } from '../../../engine/world'
 import type { Connection } from '../../../engine/net/client'
@@ -52,6 +54,31 @@ import { encodeLook, KILL_EFFECTS, TRAILS, type Look } from '../look'
 import { falloff, Sound } from './sound'
 
 type Target = { kind: 'block'; hit: BlockHit } | { kind: 'player'; id: number; distance: number } | { kind: 'npc'; npc: MapMeta['npcs'][number]; distance: number } | null
+
+/** Where a game runs: the round arena, the practice sandbox, or the network hub. */
+export type GameWorld = 'arena' | 'sandbox' | 'hub'
+
+export interface GameOptions {
+  /** Runs in this page against bots instead of on the server. */
+  offline: boolean
+  world: GameWorld
+  /** The room this game is in, for menus that want to invite or rejoin. */
+  room?: string
+  /** This server has the shared hub (Node and Electron, not Sites). */
+  canHub?: boolean
+  /** Ask the page to move this player to another room (the hub's gateways and the end screen). */
+  onTransfer?: (target: MatchTarget) => void
+}
+
+/** A tiny localStorage read, for the hub parkour's best time. */
+function storedNumber(key: string): number | null {
+  try {
+    const n = Number(localStorage.getItem(key))
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
 
 
 /**
@@ -153,7 +180,7 @@ export class Game {
     private readonly container: HTMLElement,
     private readonly connection: Connection<ClientMessage, ServerMessage>,
     settings: Settings,
-    readonly mode: { offline: boolean; world: 'arena' | 'sandbox' },
+    readonly mode: GameOptions,
   ) {
     this.settings = settings
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
@@ -192,6 +219,61 @@ export class Game {
 
   send(msg: ClientMessage) {
     this.connection.send(msg)
+  }
+
+  /** In the shared lobby rather than a round: no teams, no building, no dying. */
+  get inHub(): boolean {
+    return this.mode.world === 'hub' || this.gameView?.mode === 'hub'
+  }
+
+  // Moving between rooms ----------------------------------------------------
+
+  /** Set once a transfer starts, so a second keeper click or B press cannot start another. */
+  private transferring = false
+  private matchmaking = false
+
+  /** Asks the page to reconnect into another room (the hub, a match, the sandbox). */
+  enterRoom(target: MatchTarget): void {
+    if (this.transferring) return
+    if (!this.mode.onTransfer || (target.world === 'hub' && !this.mode.canHub)) {
+      this.hud.toast('You cannot go there from this screen.')
+      return
+    }
+    this.transferring = true
+    const where = target.world === 'sandbox' ? 'the practice sandbox' : target.world === 'hub' ? 'the hub' : target.map ? (ARENA_NAMES[target.map] ?? target.room) : target.room
+    this.hud.closeModal()
+    this.hud.setLoading(`Joining ${where}`)
+    this.mode.onTransfer(target)
+  }
+
+  /** Finds a bed-wars match on the server: a lobby with people, a bot seat, or a fresh matchmaking room. */
+  playBedwars(map?: string): void {
+    if (this.transferring || this.matchmaking) return
+    this.matchmaking = true
+    this.hud.toast(map ? `Looking for a ${ARENA_NAMES[map] ?? map} match…` : 'Looking for a match…')
+    void fetchRooms()
+      .then((list) => this.enterRoom(pickArenaRoom(list?.rooms ?? [], map)))
+      .finally(() => (this.matchmaking = false))
+  }
+
+  /** A room of your own against bots; the server starts it after a short countdown. */
+  playSolo(): void {
+    this.enterRoom({ world: 'arena', room: `solo-${Math.random().toString(36).slice(2, 7)}`, auto: true, private: true })
+  }
+
+  goPractice(): void {
+    this.enterRoom({ world: 'sandbox', room: 'practice' })
+  }
+
+  returnToHub(): void {
+    this.enterRoom({ world: 'hub', room: 'main' })
+  }
+
+  /** The hub's parkour, from start to finish, or null outside the hub. */
+  parkourInfo(): { running: boolean; elapsed: number; next: number; total: number; best: number | null; result: string | null } | null {
+    if (!this.inHub) return null
+    const elapsed = this.pk.running ? (performance.now() - this.pk.startedAt) / 1000 : this.pk.lastTime
+    return { running: this.pk.running, elapsed, next: this.pk.next, total: HUB_PARKOUR.checkpoints.length, best: this.pk.best, result: performance.now() < this.pk.resultUntil ? this.pk.result : null }
   }
 
   destroy() {
@@ -315,6 +397,10 @@ export class Game {
         else if (m.kind === 'error') this.sound.play('deny')
         else if (m.kind === 'title' && m.text === 'Protect your bed') this.sound.play('start')
         break
+      case 'chest':
+        if (m.kind) this.hud.openChest(m.kind, m.slots)
+        else this.hud.chestClosed()
+        break
       case 'summary':
         this.hud.showSummary(m)
         break
@@ -331,6 +417,7 @@ export class Game {
       }
       case 'gens':
         this.gens.update(m.list)
+        this.hud.setGenerators(this.gens.nextDrops)
         break
       case 'effect':
         this.killEffect(m.effect, m.x, m.y, m.z)
@@ -362,6 +449,7 @@ export class Game {
     this.scene.add(this.chunks.group)
     this.decor = createMapDecor(map.npcs, map.labels.filter((l) => l.text !== 'Diamond' && l.text !== 'Emerald'), this.layout, this.atlas.texture)
     this.gens.load(map.generators)
+    this.hud.setGenerators({})
     this.scene.add(this.decor)
     const top = map.bases[0]?.spawn[1] ?? 40
     this.sky = createSky(this.env, top + 45, [this.world.sx / 2, this.world.sz / 2])
@@ -390,6 +478,7 @@ export class Game {
   private bindInput() {
     const canvas = this.renderer.domElement
     canvas.addEventListener('click', () => this.lock())
+    document.addEventListener('pointerlockerror', () => this.hud.pointerLockFailed())
     document.addEventListener('pointerlockchange', () => {
       if (!this.locked) {
         this.leftDown = this.rightDown = false
@@ -533,6 +622,8 @@ export class Game {
   }
 
   private openNearestShop() {
+    // In the hub the shop key opens the map picker; keepers and the gate do the rest.
+    if (this.inHub) return this.hud.openMapSelect()
     const npc = this.map?.npcs
       .filter((n) => n.kind !== 'dummy')
       .map((n) => ({ n, d: Math.hypot(n.x - this.me.x, n.z - this.me.z) }))
@@ -589,6 +680,10 @@ export class Game {
     this.prev = { x: this.me.x, y: this.me.y, z: this.me.z }
     const input = this.input()
     stepMovement(this.world, this.me, input)
+    if (this.inHub) {
+      this.checkParkour()
+      this.checkPortal()
+    }
     this.send({
       t: 'input',
       seq: ++this.inputSeq,
@@ -612,6 +707,65 @@ export class Game {
       else this.secondary()
     }
     this.continueActions()
+  }
+
+  /** Walk through the arch behind the bed-wars keeper to join a match, no menu involved. */
+  private portalAt = 0
+
+  private checkPortal(): void {
+    if (performance.now() < this.portalAt || !inHubGate(this.me.x, this.me.y, this.me.z)) return
+    this.portalAt = performance.now() + 3000
+    this.playBedwars()
+  }
+
+  /**
+   * The hub's parkour: stand on the gold start pad, touch every quartz pad in
+   * order and finish on the gold platform. Times are local and best is kept.
+   */
+  private checkParkour(): void {
+    if (!this.me.onGround) return
+    const near = (p: [number, number, number]) =>
+      Math.abs(Math.floor(this.me.x) - p[0]) <= 1 && Math.abs(Math.floor(this.me.y + 0.01) - p[1]) <= 0 && Math.abs(Math.floor(this.me.z) - p[2]) <= 1
+    const P = HUB_PARKOUR
+    if (near(P.start)) {
+      if (!this.pk.running || this.pk.next > 0) {
+        this.pk.running = true
+        this.pk.startedAt = performance.now()
+        this.pk.next = 0
+        this.pk.result = null
+        this.sound.play('start', 0.8)
+        this.hud.toast('Parkour started: touch each quartz pad, then the gold finish')
+      }
+      return
+    }
+    if (!this.pk.running) return
+    if (this.me.y < 20) {
+      this.pk.running = false
+      this.hud.toast('Parkour failed: back to the start pad')
+      return
+    }
+    if (this.pk.next < P.checkpoints.length && near(P.checkpoints[this.pk.next])) {
+      this.pk.next++
+      this.sound.play('pickup', 0.8)
+      this.hud.toast(`Parkour checkpoint ${this.pk.next}/${P.checkpoints.length}`)
+      return
+    }
+    if (this.pk.next >= P.checkpoints.length && near(P.finish)) {
+      this.pk.running = false
+      this.pk.lastTime = (performance.now() - this.pk.startedAt) / 1000
+      const time = this.pk.lastTime
+      const best = this.pk.best
+      if (best === null || time < best) {
+        this.pk.best = time
+        this.pk.result = `${time.toFixed(1)}s · new best!`
+        try {
+          localStorage.setItem('skyshard-parkour-best', String(time))
+        } catch {}
+      } else this.pk.result = `${time.toFixed(1)}s · best ${best.toFixed(1)}s`
+      this.pk.resultUntil = performance.now() + 6000
+      this.sound.play('kill', 0.8)
+      this.hud.toast(`Parkour clear · ${this.pk.result}`)
+    }
   }
 
   private stepSpectator() {
@@ -665,6 +819,9 @@ export class Game {
   /** Counts input ticks, so the server knows how many ticks a late input covers. */
   private inputSeq = 0
 
+  /** The hub parkour: whether a run is going, when it began, the next pad, and the local best. */
+  private pk = { running: false, startedAt: 0, next: 0, lastTime: 0, best: storedNumber('skyshard-parkour-best'), result: null as string | null, resultUntil: 0 }
+
   /** A shopkeeper on the line of sight, even with someone standing in front: right click talks to it. */
   private npcTarget: Extract<Target, { kind: 'npc' }> | null = null
 
@@ -672,6 +829,8 @@ export class Game {
     const t = this.target
     this.viewModel.swingNow()
     this.sound.play('swing', 0.3, 0.9 + Math.random() * 0.2)
+    // The hub is a safe zone: swings are cosmetic.
+    if (this.inHub) return
     // Remote players are drawn a few ticks in the past (the jitter buffer); say which tick, for lag compensation.
     if (t?.kind === 'player') {
       this.send({ t: 'attack', target: t.id, seen: Math.round(this.players.renderTick(performance.now())) })
@@ -681,11 +840,28 @@ export class Game {
     else if (t?.kind === 'block') this.startDig(t.hit)
   }
 
+  /** A short line for the HUD when the crosshair rests on something usable. */
+  targetHint(): string | null {
+    const t = this.target
+    if (t?.kind !== 'block' || !this.world) return null
+    const id = this.world.get(t.hit.x, t.hit.y, t.hit.z)
+    return id === CHEST ? 'Right-click: team chest' : id === ENDER_CHEST ? 'Right-click: ender chest' : null
+  }
+
   private secondary() {
     const t = this.target
     const held = this.heldDef()
     if (this.npcTarget) {
-      this.hud.openShop(this.npcTarget.npc.kind === 'upgrades' ? 'upgrades' : 'shop')
+      this.talkTo(this.npcTarget.npc)
+      this.rightDown = false
+      return
+    }
+    // Chests are used before anything held: a block in hand must not be placed on them.
+    const hit = t?.kind === 'block' ? t.hit : null
+    const block = hit ? this.world?.get(hit.x, hit.y, hit.z) : undefined
+    if (hit && (block === CHEST || block === ENDER_CHEST)) {
+      this.send({ t: 'chest', x: hit.x, y: hit.y, z: hit.z })
+      this.viewModel.swingNow()
       this.rightDown = false
       return
     }
@@ -714,6 +890,26 @@ export class Game {
       return
     }
     if (held?.kind === 'block' && t?.kind === 'block') this.place(t.hit)
+  }
+
+  /** Right-click on a keeper: the hub's gateways, or an arena's shop and upgrade keepers. */
+  private talkTo(npc: MapMeta['npcs'][number]): void {
+    switch (npc.kind) {
+      case 'shop':
+        return this.hud.openShop('shop')
+      case 'upgrades':
+        return this.hud.openShop('upgrades')
+      case 'bedwars':
+        return this.hud.openMapSelect()
+      case 'rooms':
+        return this.hud.openServers()
+      case 'wardrobe':
+        return this.hud.openWardrobeWindow()
+      case 'practice':
+        return this.goPractice()
+      case 'solo':
+        return this.playSolo()
+    }
   }
 
   private continueActions() {
@@ -751,7 +947,7 @@ export class Game {
   }
 
   private startDig(hit: BlockHit) {
-    if (!this.world || !this.self) return
+    if (!this.world || !this.self || this.inHub) return
     if (checkBreak(this.world, this.map!.build, hit.x, hit.y, hit.z, this.mode.world === 'sandbox' ? 'red' : this.self.team)) return
     this.dig = { x: hit.x, y: hit.y, z: hit.z, progress: 0 }
     this.send({ t: 'dig', target: [hit.x, hit.y, hit.z] })
@@ -763,7 +959,7 @@ export class Game {
   }
 
   private place(hit: BlockHit) {
-    if (!this.world || !this.self || !this.map) return
+    if (!this.world || !this.self || !this.map || this.inHub) return
     const slot = this.self.selected
     const s = this.self.inventory[slot]
     const def = item(s?.id)

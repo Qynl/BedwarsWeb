@@ -14,10 +14,11 @@ export const PATTERNS: ReadonlySet<string> = new Set([
   'grass', 'noise', 'planks', 'log', 'leaves', 'wool', 'glass', 'brick', 'speckle', 'bedrock', 'bed', 'banded', 'smooth',
   'cobble', 'mossy-cobble', 'stonebrick', 'mossy-stonebrick', 'cracked-stonebrick', 'sand', 'sandstone', 'carved', 'snow', 'ice',
   'lamp', 'quartz', 'pillar', 'terracotta', 'tiles', 'stained', 'hay', 'water', 'gravel', 'cactus', 'metal', 'flowers', 'tuft',
-  'birch', 'snowy-leaves', 'pole', 'chain',
+  'birch', 'snowy-leaves', 'pole', 'chain', 'chest', 'ender-chest',
 ])
 
 const MOSS: RGB = [84, 118, 58]
+const GOLD: RGB = [232, 196, 92]
 const LEAF: RGB = [66, 124, 50]
 
 /**
@@ -300,6 +301,19 @@ export function drawTile(recipe: TileRecipe, seed: number): ImageData {
         case 'wool':
           put(x, y, base, ((x + y) % 4 === 0 ? 0.88 : 0.97) + (n - 0.5) * 0.1)
           break
+        case 'chest':
+        case 'ender-chest': {
+          const ender = pattern === 'ender-chest'
+          // Pale planks or end stone, a dark rim, a lid seam and a bright latch.
+          let f = 0.86 + (y % 4 === 3 ? 0.12 : 0) + (n - 0.5) * 0.12
+          if (rim || y === 5) f = 0.58
+          if (y >= 2 && y <= 4 && (x === 1 || x === 14)) f *= 0.82
+          if (ender && h(x, y, 3) > 0.86) f *= 1.22
+          const latch = x >= 7 && x <= 8 && y >= 4 && y <= 8
+          if (latch) f = ender ? 1.35 : 1.18
+          put(x, y, latch && !ender ? GOLD : base, f)
+          break
+        }
         case 'glass': {
           const border = x === 0 || y === 0 || x === 15 || y === 15
           const glint = (x - y === 3 && x > 4 && x < 9) || (x - y === 5 && x > 9 && x < 12)
